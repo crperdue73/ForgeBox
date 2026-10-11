@@ -42,6 +42,69 @@ hardware can carry.
 > for its HTTPS port. ForgeBox maps code-server to host **8444** so both can run at
 > once (see the Troubleshooting doc). Heimdall keeps 8443.
 
+## First-login defaults (by profile)
+
+The full cheat sheet (URL + exact first-login note for every service) lives in
+[`install.md`](install.md#first-login-cheat-sheet). Quick reference below — **change
+every default password immediately.**
+
+**core (always deployed)**
+
+| Service | URL | First login |
+|---|---|---|
+| Heimdall | `http://host:8080` | No login — the launchpad. Add app tiles yourself. |
+| Portainer | `http://host:9000` | Create the admin user on first visit. |
+| Nginx Proxy Manager | `http://host:81` | `admin@example.com` / `changeme` — change on first login. |
+| Uptime Kuma | `http://host:3001` | Create the admin user on first visit. |
+| Glances | `http://host:61208` | No auth by default — read-only monitor. |
+| Watchtower | *(none)* | Headless; `docker logs watchtower` to watch it work. |
+
+**devops (`--profile devops`)**
+
+| Service | URL | First login |
+|---|---|---|
+| Gitea | `http://host:3000` | Install wizard — pick SQLite, set the admin. |
+| Semaphore | `http://host:3010` | `admin` / `$SEMAPHORE_ADMIN_PASSWORD` (`.env`). |
+| Jenkins | `http://host:8081` | Initial password: `docker exec jenkins cat /var/jenkins_home/secrets/initialAdminPassword`. |
+| code-server | `http://host:8444` | **No auth by default** — see [Troubleshooting](troubleshooting.md#code-server-has-no-authentication-by-default). |
+| Guacamole | `http://host:8082` | `guacadmin` / `guacadmin` — **change immediately**. |
+
+**security (`--profile security`)**
+
+| Service | URL | First login |
+|---|---|---|
+| Pi-hole | `http://host:8010/admin` | `$PIHOLE_PASSWORD` (`.env`; auto-generated if left blank). |
+| Vaultwarden | `http://host:8020` | No default account — "Create account" for the admin. |
+| WireGuard | *(none)* | Config-driven; `docker logs wireguard` for the peer QR/config. |
+| Gluetun | *(none)* | Needs `WIREGUARD_PRIVATE_KEY`; `docker logs gluetun` for state. |
+
+**media (`--profile media`)**
+
+| Service | URL | First login |
+|---|---|---|
+| Jellyfin | `http://host:8096` | Setup wizard — create the admin. |
+| Sonarr / Radarr / Prowlarr | `:8989` / `:7878` / `:9696` | No auth by default — set it in Settings → General → Authentication. |
+| qBittorrent | `http://host:8085` | Temp password in the logs: `docker logs qbittorrent`. |
+| Overseerr | `http://host:5055` | Sign in with Plex, then link Jellyfin. |
+
+**productivity (`--profile productivity`)**
+
+| Service | URL | First login |
+|---|---|---|
+| Home Assistant | `http://host:8123` | Onboarding — create the owner account. |
+| Paperless-ngx | `http://host:8011` | `admin` / `admin` — **change immediately**. |
+| Vikunja | `http://host:3456` | Register the first account (becomes admin). |
+| Linkding | `http://host:9090` | Create the superuser on first visit. |
+| n8n | `http://host:5678` | Owner setup; encryption key from `.env`. |
+
+**files (`--profile files`)**
+
+| Service | URL | First login |
+|---|---|---|
+| Nextcloud | `http://host:8030` | Setup wizard — create the admin. |
+| Syncthing | `http://host:8384` | GUI open by default — set a user/password immediately. |
+| Chibisafe | `http://host:8040` | First-visit setup — create the admin. |
+
 ## Sizing guidance
 
 - **core** — ~1.5 GB RAM, small disk. Fine on a 2c/4G box.

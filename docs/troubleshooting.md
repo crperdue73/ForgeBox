@@ -69,6 +69,31 @@ Usually a permissions or a missing-secret issue.
 - Check `PUID`/`PGID` in `.env` match the owner of your data directories.
 - Check required env vars (a service with `:?` in the compose file **requires** the var).
 
+## code-server has no authentication by default
+
+`lscr.io/linuxserver/code-server` ships with `auth: none` — a browser VS Code with
+shell access to the host, reachable by anyone who can hit port **8444**. On a trusted
+LAN that's survivable; for a "datacenter-in-a-box" it isn't good enough.
+
+Two ways to close it:
+
+1. **Set a password** on the service. Add to `docker-compose.yml` under `code-server`:
+
+   ```yaml
+   environment:
+     - PASSWORD=${CODE_SERVER_PASSWORD:?set CODE_SERVER_PASSWORD in .env}
+     # or, preferred (no plaintext in env):
+     # - HASHED_PASSWORD=${CODE_SERVER_HASHED_PASSWORD:?}
+   ```
+
+   Then add `CODE_SERVER_PASSWORD=` to `.env` (the installer can auto-generate it).
+   Prefer `HASHED_PASSWORD` — generate with `echo -n 'yourpass' | argon2 "$(openssl rand -base64 16)" -id -t 3 -m 16 -p 4`.
+
+2. **Put it behind the reverse proxy** (Nginx Proxy Manager) and terminate auth there,
+   and/or fire a firewall rule so 8444 is only reachable from your admin subnet.
+
+Until one of these is done, do **not** expose 8444 to an untrusted network.
+
 ## Out of disk
 
 The media and files profiles grow without bound.
