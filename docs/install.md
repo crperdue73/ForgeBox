@@ -29,6 +29,39 @@ sudo bash install.sh
 `/opt/forgebox`, applies the kernel tweaks the media stack needs, and tells you the
 next step. It does **not** start containers — that's yours to run.
 
+### Unattended install / answer file
+
+For provisioning scripts or hands-off bring-up, `install.sh` can seed `.env` and
+deploy without prompts:
+
+```bash
+sudo bash install.sh --unattended           # seed .env, auto-generate secrets
+sudo bash install.sh --answers my.env       # seed .env from an answers file
+sudo bash install.sh --deploy               # ...then run `docker compose up -d`
+sudo bash install.sh --answers my.env --deploy   # fully hands-off host
+```
+
+The **answers file** is plain `KEY=value` lines (same keys as `.env.example`);
+`#` comments and blank lines are ignored. Precedence is
+`existing .env` < `.env.example` < answers file. Any secret still left at
+`change-me` (`PAPERLESS_DBPASS`, `PAPERLESS_SECRET_KEY`, `N8N_ENCRYPTION_KEY`,
+`PIHOLE_PASSWORD`, `SEMAPHORE_ADMIN_PASSWORD`) is auto-generated, and `.env` is
+written `chmod 600`. The seeding step is idempotent — a re-run never clobbers an
+existing `.env` or regenerates a secret already set.
+
+Example `answers.env`:
+
+```ini
+TZ=America/Chicago
+PUID=1000
+PGID=1000
+SEMAPHORE_ADMIN_PASSWORD=a-real-password
+WIREGUARD_PRIVATE_KEY=...
+```
+
+If `WIREGUARD_PRIVATE_KEY` is left empty the installer warns (not fails) — the
+Gluetun/qBittorrent VPN path stays disabled until it's filled in.
+
 ## Configure
 
 ```bash
