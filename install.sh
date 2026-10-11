@@ -59,13 +59,20 @@ install -d -m 0755 /opt/forgebox/data/media /opt/forgebox/data/consume
 ok "Host dirs ready under /opt/forgebox"
 
 # --- 4. Kernel tweaks for the media/networking stack ------------------------
+# Best-effort: on unprivileged LXC/containers some keys are read-only and
+# `sysctl --system` returns non-zero. That must NOT abort the installer.
 log "Applying sysctl tweaks (inotify limits for media stack)..."
 cat > /etc/sysctl.d/99-forgebox.conf <<'SYSCTL'
 fs.inotify.max_user_watches = 524288
 fs.inotify.max_user_instances = 512
 net.ipv4.conf.all.src_valid_mark = 1
 SYSCTL
-sysctl --system >/dev/null
+if sysctl --system >/dev/null 2>&1; then
+  ok "sysctl tweaks applied"
+else
+  log "WARN: some sysctl keys could not be set (common in LXC/containers);"
+  log "      ForgeBox will still run — media/network tuning is best-effort."
+fi
 
 # --- 5. Firewall hint -------------------------------------------------------
 if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q "Status: active"; then
