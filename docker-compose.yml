@@ -179,7 +179,10 @@ services:
 
   semaphore:
     <<: *common
-    image: semaphoreui/semaphore:latest
+    # Pinned: :latest (>=v2.18.12) is a pro build that panics on BoltDB
+    # ("unknown store type" in NewTerraformStore, upstream issue #4126).
+    # v2.18.10 is the last known-good release on bolt.
+    image: semaphoreui/semaphore:v2.18.10
     container_name: semaphore
     ports: ["3010:3000"]
     environment:
@@ -207,7 +210,8 @@ services:
     <<: *common
     image: lscr.io/linuxserver/code-server:latest
     container_name: code-server
-    ports: ["8443:8443"]
+    # 8444 (8443 is Heimdall's HTTPS port in core)
+    ports: ["8444:8443"]
     volumes:
       - code_server_config:/config
     profiles: [devops]

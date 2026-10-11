@@ -21,7 +21,7 @@ hardware can carry.
 | Gitea | devops | 3000, 2222 | Self-hosted Git |
 | Semaphore | devops | 3010 | Ansible control UI |
 | Jenkins | devops | 8081, 50000 | CI engine |
-| code-server | devops | 8443 | VS Code in the browser |
+| code-server | devops | 8444 | VS Code in the browser |
 | Guacamole | devops | 8082 | Clientless remote desktop |
 | Jellyfin | media | 8096 | Media server |
 | Sonarr | media | 8989 | TV automation |
@@ -38,10 +38,9 @@ hardware can carry.
 | Syncthing | files | 8384, 22000, 21027 | Decentralized sync |
 | Chibisafe | files | 8040 | File drop / sharing |
 
-> Note: **code-server** defaults to 8443, the same number **Heimdall** uses for its
-> HTTPS port. If you run both, change one (see the Troubleshooting doc). The table
-> above lists 8443 for code-server; Heimdall HTTPS is only needed if you terminate
-> TLS inside it, which Nginx Proxy Manager usually handles instead.
+> Note: **code-server** upstream defaults to 8443, the same number **Heimdall** uses
+> for its HTTPS port. ForgeBox maps code-server to host **8444** so both can run at
+> once (see the Troubleshooting doc). Heimdall keeps 8443.
 
 ## Sizing guidance
 

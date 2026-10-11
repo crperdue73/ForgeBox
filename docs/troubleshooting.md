@@ -22,11 +22,12 @@ Then either stop the other thing, or change ForgeBox's mapping in
 `docker-compose.yml` (and note it). The `docs/services.md` port map is designed to be
 conflict-free **within** ForgeBox; the host may still have its own listener.
 
-### Known overlap
+### Known overlap (resolved)
 
-**Heimdall HTTPS (8443)** and **code-server (8443)** use the same number. If you run
-both, edit one. Most people don't need Heimdall's built-in HTTPS — Nginx Proxy Manager
-handles TLS for the whole lab.
+**Heimdall HTTPS (8443)** and **code-server** both default to 8443. ForgeBox maps
+code-server to host **8444** (`8444:8443`) so both run at once. If you'd rather keep
+code-server on 8443, drop Heimdall's `8443:443` mapping — most people don't need
+Hemidall's built-in HTTPS since Nginx Proxy Manager handles TLS for the whole lab.
 
 ## `apt-get update` fails on the DragonForge repo
 
