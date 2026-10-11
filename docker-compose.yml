@@ -1,0 +1,457 @@
+# ============================================================================
+#  ForgeBox — Datacenter-in-a-Box
+#  One compose file. One command. A datacenter you strike out of spare iron.
+#
+#  Deploy core:   docker compose up -d
+#  Add profiles:  docker compose --profile devops up -d
+#  Several:       docker compose --profile devops --profile media up -d
+#  Everything:    docker compose --profile all up -d
+#
+#  Docs: docs/   ·  Branding: branding/BRAND.md
+#  Maintained by CR Perdue Technologies. Project: ForgeBox.
+# ============================================================================
+
+name: forgebox
+
+# --- Reusable anchors -------------------------------------------------------
+x-restart: &restart
+  restart: unless-stopped
+
+x-common: &common
+  restart: unless-stopped
+  networks: [forgebox]
+  environment:
+    TZ: ${TZ:-America/New_York}
+    PUID: ${PUID:-1000}
+    PGID: ${PGID:-1000}
+
+networks:
+  forgebox:
+    name: forgebox
+    driver: bridge
+
+# ============================================================================
+#  CORE  (always deployed — no profile)
+# ============================================================================
+services:
+
+  portainer:
+    <<: *common
+    image: portainer/portainer-ce:latest
+    container_name: portainer
+    command: -H unix:///var/run/docker.sock
+    ports: ["9000:9000"]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
+    profiles: []
+
+  heimdall:
+    <<: *common
+    image: lscr.io/linuxserver/heimdall:latest
+    container_name: heimdall
+    ports: ["8080:80", "8443:443"]
+    volumes:
+      - heimdall_config:/config
+    profiles: []
+
+  npm:
+    <<: *common
+    image: jc21/nginx-proxy-manager:latest
+    container_name: npm
+    ports: ["80:80", "443:443", "81:81"]
+    volumes:
+      - npm_data:/data
+      - npm_letsencrypt:/etc/letsencrypt
+    profiles: []
+
+  uptime-kuma:
+    <<: *common
+    image: louislam/uptime-kuma:1
+    container_name: uptime-kuma
+    ports: ["3001:3001"]
+    volumes:
+      - uptime_kuma_data:/app/data
+    profiles: []
+
+  watchtower:
+    <<: *common
+    image: containrrr/watchtower:latest
+    container_name: watchtower
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      TZ: ${TZ:-America/New_York}
+      WATCHTOWER_CLEANUP: "true"
+      WATCHTOWER_POLL_INTERVAL: "86400"
+      WATCHTOWER_ROLLING_RESTART: "true"
+    profiles: []
+
+  glances:
+    <<: *common
+    image: nicolargo/glances:latest-full
+    container_name: glances
+    pid: host
+    ports: ["61208:61208"]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      TZ: ${TZ:-America/New_York}
+      GLANCES_OPT: "-w"
+    profiles: []
+
+# ============================================================================
+#  SECURITY  (--profile security)
+# ============================================================================
+  pihole:
+    <<: *common
+    image: pihole/pihole:latest
+    container_name: pihole
+    ports: ["53:53/tcp", "53:53/udp", "8010:80/tcp"]
+    environment:
+      TZ: ${TZ:-America/New_York}
+      WEBPASSWORD: ${PIHOLE_PASSWORD:?set PIHOLE_PASSWORD in .env}
+    volumes:
+      - pihole_etc:/etc/pihole
+      - pihole_dnsmasq:/etc/dnsmasq.d
+    cap_add: [NET_ADMIN]
+    profiles: [security]
+
+  wireguard:
+    <<: *common
+    image: lscr.io/linuxserver/wireguard:latest
+    container_name: wireguard
+    ports: ["51820:51820/udp"]
+    cap_add: [NET_ADMIN, SYS_MODULE]
+    sysctls:
+      net.ipv4.conf.all.src_valid_mark: "1"
+    volumes:
+      - wireguard_config:/config
+      - /lib/modules:/lib/modules:ro
+    profiles: [security]
+
+  vaultwarden:
+    <<: *common
+    image: vaultwarden/server:latest
+    container_name: vaultwarden
+    ports: ["8020:80"]
+    volumes:
+      - vaultwarden_data:/data
+    profiles: [security]
+
+  gluetun:
+    <<: *common
+    image: qmcgaw/gluetun:latest
+    container_name: gluetun
+    cap_add: [NET_ADMIN]
+    devices: [/dev/net/tun:/dev/net/tun]
+    ports: ["8888:8888/tcp"]
+    environment:
+      TZ: ${TZ:-America/New_York}
+      VPN_SERVICE_PROVIDER: ${VPN_SERVICE_PROVIDER:-custom}
+      VPN_TYPE: ${VPN_TYPE:-wireguard}
+      WIREGUARD_PRIVATE_KEY: ${WIREGUARD_PRIVATE_KEY:-}
+      WIREGUARD_ADDRESSES: ${WIREGUARD_ADDRESSES:-}
+      SERVER_COUNTRIES: ${SERVER_COUNTRIES:-}
+    profiles: [security]
+
+# ============================================================================
+#  DEVOPS — The DragonForge Core  (--profile devops)
+# ============================================================================
+  gitea:
+    <<: *common
+    image: gitea/gitea:latest
+    container_name: gitea
+    ports: ["3000:3000", "2222:22"]
+    volumes:
+      - gitea_data:/data
+    environment:
+      TZ: ${TZ:-America/New_York}
+      GITEA__database__DB_TYPE: sqlite3
+      USER_UID: ${PUID:-1000}
+      USER_GID: ${PGID:-1000}
+    profiles: [devops]
+
+  semaphore:
+    <<: *common
+    image: semaphoreui/semaphore:latest
+    container_name: semaphore
+    ports: ["3010:3000"]
+    environment:
+      TZ: ${TZ:-America/New_York}
+      SEMAPHORE_DB_DIALECT: bolt
+      SEMAPHORE_ADMIN: ${SEMAPHORE_ADMIN:-admin}
+      SEMAPHORE_ADMIN_PASSWORD: ${SEMAPHORE_ADMIN_PASSWORD:?set SEMAPHORE_ADMIN_PASSWORD in .env}
+      SEMAPHORE_ADMIN_NAME: ${SEMAPHORE_ADMIN_NAME:-Admin}
+      SEMAPHORE_ADMIN_EMAIL: ${SEMAPHORE_ADMIN_EMAIL:-admin@forgebox.local}
+    volumes:
+      - semaphore_data:/var/lib/semaphore
+    profiles: [devops]
+
+  jenkins:
+    <<: *common
+    image: jenkins/jenkins:lts-jdk17
+    container_name: jenkins
+    user: root
+    ports: ["8081:8080", "50000:50000"]
+    volumes:
+      - jenkins_home:/var/jenkins_home
+    profiles: [devops]
+
+  code-server:
+    <<: *common
+    image: lscr.io/linuxserver/code-server:latest
+    container_name: code-server
+    ports: ["8443:8443"]
+    volumes:
+      - code_server_config:/config
+    profiles: [devops]
+
+  guacamole:
+    <<: *common
+    image: flcontainers/guacamole:latest
+    container_name: guacamole
+    ports: ["8082:8080"]
+    environment:
+      TZ: ${TZ:-America/New_York}
+    volumes:
+      - guacamole_data:/config
+    profiles: [devops]
+
+# ============================================================================
+#  MEDIA  (--profile media)
+# ============================================================================
+  jellyfin:
+    <<: *common
+    image: lscr.io/linuxserver/jellyfin:latest
+    container_name: jellyfin
+    ports: ["8096:8096"]
+    volumes:
+      - jellyfin_config:/config
+      - ${MEDIA_PATH:-./data/media}:/data/media
+    profiles: [media]
+
+  sonarr:
+    <<: *common
+    image: lscr.io/linuxserver/sonarr:latest
+    container_name: sonarr
+    ports: ["8989:8989"]
+    volumes:
+      - sonarr_config:/config
+      - ${MEDIA_PATH:-./data/media}:/data/media
+    profiles: [media]
+
+  radarr:
+    <<: *common
+    image: lscr.io/linuxserver/radarr:latest
+    container_name: radarr
+    ports: ["7878:7878"]
+    volumes:
+      - radarr_config:/config
+      - ${MEDIA_PATH:-./data/media}:/data/media
+    profiles: [media]
+
+  prowlarr:
+    <<: *common
+    image: lscr.io/linuxserver/prowlarr:latest
+    container_name: prowlarr
+    ports: ["9696:9696"]
+    volumes:
+      - prowlarr_config:/config
+    profiles: [media]
+
+  qbittorrent:
+    <<: *common
+    image: lscr.io/linuxserver/qbittorrent:latest
+    container_name: qbittorrent
+    ports: ["8085:8085"]
+    environment:
+      TZ: ${TZ:-America/New_York}
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      WEBUI_PORT: "8085"
+    volumes:
+      - qbittorrent_config:/config
+      - ${MEDIA_PATH:-./data/media}:/data/media
+    profiles: [media]
+
+  overseerr:
+    <<: *common
+    image: sctx/overseerr:latest
+    container_name: overseerr
+    ports: ["5055:5055"]
+    volumes:
+      - overseerr_config:/config
+    profiles: [media]
+
+# ============================================================================
+#  PRODUCTIVITY  (--profile productivity)
+# ============================================================================
+  homeassistant:
+    <<: *common
+    image: ghcr.io/home-assistant/home-assistant:stable
+    container_name: homeassistant
+    network_mode: host
+    privileged: true
+    volumes:
+      - homeassistant_config:/config
+      - /etc/localtime:/etc/localtime:ro
+    profiles: [productivity]
+
+  paperless-ngx:
+    <<: *common
+    image: ghcr.io/paperless-ngx/paperless-ngx:latest
+    container_name: paperless-ngx
+    ports: ["8011:8000"]
+    environment:
+      TZ: ${TZ:-America/New_York}
+      PAPERLESS_REDIS: redis://paperless_redis:6379
+      PAPERLESS_DBHOST: paperless_db
+      PAPERLESS_DBENGINE: postgresql
+      PAPERLESS_DBUSER: paperless
+      PAPERLESS_DBPASS: ${PAPERLESS_DBPASS:-paperless}
+      PAPERLESS_SECRET_KEY: ${PAPERLESS_SECRET_KEY:-changeme}
+      PAPERLESS_URL: ${PAPERLESS_URL:-http://localhost:8011}
+      PAPERLESS_OCR_LANGUAGE: ${PAPERLESS_OCR_LANGUAGE:-eng}
+    volumes:
+      - paperless_data:/usr/src/paperless/data
+      - paperless_media:/usr/src/paperless/media
+      - ${PAPERLESS_CONSUME:-./data/consume}:/usr/src/paperless/consume
+    depends_on: [paperless_redis, paperless_db]
+    profiles: [productivity]
+
+  paperless_redis:
+    <<: *common
+    image: redis:7
+    container_name: paperless_redis
+    volumes:
+      - paperless_redis_data:/data
+    profiles: [productivity]
+
+  paperless_db:
+    <<: *common
+    image: postgres:16
+    container_name: paperless_db
+    environment:
+      POSTGRES_DB: paperless
+      POSTGRES_USER: paperless
+      POSTGRES_PASSWORD: ${PAPERLESS_DBPASS:-paperless}
+    volumes:
+      - paperless_db_data:/var/lib/postgresql/data
+    profiles: [productivity]
+
+  vikunja:
+    <<: *common
+    image: vikunja/vikunja:latest
+    container_name: vikunja
+    ports: ["3456:3456"]
+    environment:
+      TZ: ${TZ:-America/New_York}
+      VIKUNJA_SERVICE_PUBLICURL: ${VIKUNJA_URL:-http://localhost:3456}
+      VIKUNJA_DATABASE_TYPE: sqlite
+    volumes:
+      - vikunja_data:/app/vikunja/files
+    profiles: [productivity]
+
+  linkding:
+    <<: *common
+    image: sissbruecker/linkding:latest
+    container_name: linkding
+    ports: ["9090:9090"]
+    volumes:
+      - linkding_data:/etc/linkding/data
+    profiles: [productivity]
+
+  n8n:
+    <<: *common
+    image: docker.n8n.io/n8nio/n8n:latest
+    container_name: n8n
+    ports: ["5678:5678"]
+    environment:
+      TZ: ${TZ:-America/New_York}
+      N8N_HOST: ${N8N_HOST:-localhost}
+      N8N_PORT: "5678"
+      GENERIC_TIMEZONE: ${TZ:-America/New_York}
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:-changeme}
+    volumes:
+      - n8n_data:/home/node/.n8n
+    profiles: [productivity]
+
+# ============================================================================
+#  FILES  (--profile files)
+# ============================================================================
+  nextcloud:
+    <<: *common
+    image: lscr.io/linuxserver/nextcloud:latest
+    container_name: nextcloud
+    ports: ["8030:443"]
+    volumes:
+      - nextcloud_config:/config
+      - nextcloud_data:/data
+    profiles: [files]
+
+  syncthing:
+    <<: *common
+    image: lscr.io/linuxserver/syncthing:latest
+    container_name: syncthing
+    ports: ["8384:8384", "22000:22000/tcp", "22000:22000/udp", "21027:21027/udp"]
+    volumes:
+      - syncthing_config:/config
+    profiles: [files]
+
+  chibisafe:
+    <<: *common
+    image: chibisafe/chibisafe:latest
+    container_name: chibisafe
+    ports: ["8040:8000"]
+    volumes:
+      - chibisafe_data:/app/database
+      - chibisafe_uploads:/app/uploads
+    profiles: [files]
+
+# ============================================================================
+#  AGGREGATE PROFILE  —  `--profile all` brings up everything optional
+# ============================================================================
+  # (Profiles compose additively; `all` is a convenience alias documented in
+  #  docs/quick-start.md: run e.g. `--profile all`.)
+
+volumes:
+  # core
+  portainer_data:
+  heimdall_config:
+  npm_data:
+  npm_letsencrypt:
+  uptime_kuma_data:
+  # security
+  pihole_etc:
+  pihole_dnsmasq:
+  wireguard_config:
+  vaultwarden_data:
+  # devops
+  gitea_data:
+  semaphore_data:
+  jenkins_home:
+  code_server_config:
+  guacamole_data:
+  # media
+  jellyfin_config:
+  sonarr_config:
+  radarr_config:
+  prowlarr_config:
+  qbittorrent_config:
+  overseerr_config:
+  # productivity
+  homeassistant_config:
+  paperless_data:
+  paperless_media:
+  paperless_redis_data:
+  paperless_db_data:
+  vikunja_data:
+  linkding_data:
+  n8n_data:
+  # files
+  nextcloud_config:
+  nextcloud_data:
+  syncthing_config:
+  chibisafe_data:
+  chibisafe_uploads:

@@ -1,0 +1,9 @@
+# Secrets + local state
+.env
+*.env.local
+data/
+
+# OS / editor
+.DS_Store
+*.swp
+*~
