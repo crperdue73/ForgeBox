@@ -212,6 +212,10 @@ services:
     container_name: code-server
     # 8444 (8443 is Heimdall's HTTPS port in core)
     ports: ["8444:8443"]
+    environment:
+      # linuxserver image defaults to auth: none — an open browser IDE with shell
+      # access. Gate it: PASSWORD sets the login prompt. Seeded from .env.
+      PASSWORD: ${CODE_SERVER_PASSWORD:-change-me}
     volumes:
       - code_server_config:/config
     profiles: [devops]

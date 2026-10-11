@@ -69,30 +69,32 @@ Usually a permissions or a missing-secret issue.
 - Check `PUID`/`PGID` in `.env` match the owner of your data directories.
 - Check required env vars (a service with `:?` in the compose file **requires** the var).
 
-## code-server has no authentication by default
+## code-server is password-gated by ForgeBox (upstream default: no auth)
 
 `lscr.io/linuxserver/code-server` ships with `auth: none` — a browser VS Code with
 shell access to the host, reachable by anyone who can hit port **8444**. On a trusted
 LAN that's survivable; for a "datacenter-in-a-box" it isn't good enough.
 
-Two ways to close it:
+**ForgeBox closes this by default.** The `code-server` service in `docker-compose.yml`
+sets `PASSWORD: ${CODE_SERVER_PASSWORD:-change-me}`, and `install.sh` auto-generates a
+random `CODE_SERVER_PASSWORD` in `.env` (chmod 600) when the value is left at
+`change-me`. So a fresh ForgeBox deploy prompts for a password at `http://host:8444`
+instead of handing out an anonymous shell.
 
-1. **Set a password** on the service. Add to `docker-compose.yml` under `code-server`:
+To set your own:
 
-   ```yaml
-   environment:
-     - PASSWORD=${CODE_SERVER_PASSWORD:?set CODE_SERVER_PASSWORD in .env}
-     # or, preferred (no plaintext in env):
-     # - HASHED_PASSWORD=${CODE_SERVER_HASHED_PASSWORD:?}
-   ```
+1. Put `CODE_SERVER_PASSWORD=something-strong` in `.env` before deploying (or edit and
+   `docker compose up -d code-server` to recreate). The install answer file
+   (`install.sh --answers FILE`) accepts the same key.
+2. Prefer **no plaintext in the environment**? Use `HASHED_PASSWORD` instead —
+   generate one with `echo -n 'yourpass' | argon2 "$(openssl rand -base64 16)" -id -t 3 -m 16 -p 4`
+   and replace the `PASSWORD:` line with `HASHED_PASSWORD: ${CODE_SERVER_HASHED_PASSWORD}`.
 
-   Then add `CODE_SERVER_PASSWORD=` to `.env` (the installer can auto-generate it).
-   Prefer `HASHED_PASSWORD` — generate with `echo -n 'yourpass' | argon2 "$(openssl rand -base64 16)" -id -t 3 -m 16 -p 4`.
+Defense in depth: you can also put it behind the reverse proxy (Nginx Proxy Manager)
+and/or fire a UFW rule so 8444 is only reachable from your admin subnet.
 
-2. **Put it behind the reverse proxy** (Nginx Proxy Manager) and terminate auth there,
-   and/or fire a firewall rule so 8444 is only reachable from your admin subnet.
-
-Until one of these is done, do **not** expose 8444 to an untrusted network.
+> On versions predating the built-in password, 8444 was open to anyone who could
+> reach the host. Do **not** expose 8444 to an untrusted network without a password.
 
 ## Out of disk
 

@@ -121,7 +121,7 @@ admin on first visit.
 | Gitea | `http://host:3000` | Install wizard on first visit — pick SQLite, set the admin. |
 | Semaphore | `http://host:3010` | `admin` / `$SEMAPHORE_ADMIN_PASSWORD` from `.env` (`admin@forgebox.local`). Changing it in the UI is fine. |
 | Jenkins | `http://host:8081` | Unlock with the initial admin password: `docker exec jenkins cat /var/jenkins_home/secrets/initialAdminPassword`, then install suggested plugins + create the admin. |
-| code-server | `http://host:8444` | **No auth out of the box** (linuxserver default `auth: none`) — put it behind NPM or set a password. Mapped to 8444; 8443 is Heimdall's HTTPS port. |
+| code-server | `http://host:8444` | Password-protected by ForgeBox (`CODE_SERVER_PASSWORD` in `.env`; `install.sh` auto-generates it). Upstream ships `auth: none`, so don't leave it unset. Mapped to 8444; 8443 is Heimdall's HTTPS port. |
 | Guacamole | `http://host:8082` | Default `guacadmin` / `guacadmin` — **change immediately**, it's a remote-desktop gateway. |
 
 ### security (`--profile security`)

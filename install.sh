@@ -137,7 +137,7 @@ seed_env() {
 
   # Auto-generate any remaining placeholder secrets (unattended bring-up).
   local k
-  for k in PAPERLESS_DBPASS PAPERLESS_SECRET_KEY N8N_ENCRYPTION_KEY PIHOLE_PASSWORD SEMAPHORE_ADMIN_PASSWORD; do
+  for k in PAPERLESS_DBPASS PAPERLESS_SECRET_KEY N8N_ENCRYPTION_KEY PIHOLE_PASSWORD SEMAPHORE_ADMIN_PASSWORD CODE_SERVER_PASSWORD; do
     if grep -q "^${k}=change-me\$" "$envf"; then
       tmp="$(mktemp)"; sed "s|^${k}=.*|${k}=$(gen_secret)|" "$envf" > "$tmp" && mv "$tmp" "$envf"
       ok "Generated secret for ${k}"
