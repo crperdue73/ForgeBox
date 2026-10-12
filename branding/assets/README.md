@@ -53,10 +53,32 @@ is needed.
 | `wallpaper-minimal.jpg` | Wordmark bottom-left, mark top-right | 16:9 |
 | `wallpaper-phone.jpg` | Anvil-rack centered, embers below | 9:16 portrait |
 
+## Icons (`icons/`)
+
+Derived by Delphine 2026-10-12 from `mark-three-bay.jpg` (near-black square mark,
+1254x1254) with ImageMagick — the source reads cleanly at favicon sizes. Alternate
+badge export derived from `mark-ringed.jpg`.
+
+| File | Size | Use |
+| --- | --- | --- |
+| `icons/favicon.ico` | 16/32/48 multi-res | Browser favicon (`<link rel="icon">`) |
+| `icons/favicon-32.png` | 32x32 | Modern browser favicon |
+| `icons/favicon-48.png` | 48x48 | Windows shortcut / hi-dpi tab |
+| `icons/apple-touch-icon-180.png` | 180x180 | iOS home-screen icon |
+| `icons/icon-192.png` | 192x192 | Android / PWA manifest |
+| `icons/icon-512.png` | 512x512 | PWA splash / large |
+| `icons/badge-ringed-512.png` | 512x512 | Alternate avatar/badge (from `mark-ringed.jpg`) |
+
+Regenerate:
+```sh
+magick mark-three-bay.jpg -define icon:auto-resize=48,32,16 icons/favicon.ico
+for s in 32 48 180 192 512; do magick mark-three-bay.jpg -resize ${s}x${s} -strip icons/icon-${s}.png; done
+```
+
 ## Pending
 
 - `file_9a` (1254x1254 square) — unidentified, vision API refused it. Awaiting Robbie.
-- Favicon / 32px + 180px exports — derive from `mark-three-bay.jpg` or `mark-ringed.jpg`.
+- ~~Favicon / 32px + 180px exports~~ — **DONE 2026-10-12 18:0x ET**, see Icons above.
 
 ## Not in this set
 
