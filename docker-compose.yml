@@ -435,7 +435,9 @@ services:
     <<: *common
     image: chibisafe/chibisafe:latest
     container_name: chibisafe
-    ports: ["8040:8000"]
+    # Chibisafe v4 (Next.js) listens on 8001 inside the container (image sets
+    # PORT=8001); mapping 8000 leaves nothing listening and connections reset.
+    ports: ["8040:8001"]
     volumes:
       - chibisafe_data:/app/database
       - chibisafe_uploads:/app/uploads
