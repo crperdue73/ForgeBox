@@ -96,6 +96,34 @@ and/or fire a UFW rule so 8444 is only reachable from your admin subnet.
 > On versions predating the built-in password, 8444 was open to anyone who could
 > reach the host. Do **not** expose 8444 to an untrusted network without a password.
 
+## Gluetun won't start: `/dev/net/tun: no such file or directory`
+
+Symptom — `docker compose --profile security up -d` leaves `gluetun` stuck in
+`created` (exit 128) with:
+
+```
+error gathering device information while adding custom device "/dev/net/tun": no such file or directory
+```
+
+ForgeBox's `gluetun` service (the VPN gateway) declares `devices: [/dev/net/tun:/dev/net/tun]`.
+On bare metal that node always exists. In an **unprivileged LXC/incus container** the host
+must pass it through — the kernel has tun support, but the container has no `/dev/net/tun`
+device node, so the container never starts.
+
+Fix (run on the **LXC host**, not inside the container), replace `VMID` with the
+container's id, then restart the container:
+
+```bash
+# Proxmox / lxc
+lxc.cgroup2.devices.allow: c 10:200 rwm    # add to /etc/pve/lxc/VMID.conf
+lxc.mount.entry: /dev/net/tun dev/net/tun none bind,create=file
+```
+
+Or run ForgeBox inside a **privileged** LXC / a VM / bare metal. `wireguard` (also in the
+`security` profile) runs without the node but still needs a valid peer config to build a
+tunnel. Neither VPN service is required for the rest of the stack — skip the `security`
+profile if you don't need a VPN gateway.
+
 ## Out of disk
 
 The media and files profiles grow without bound.
