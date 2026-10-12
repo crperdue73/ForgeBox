@@ -11,6 +11,11 @@
 #    ./tests/smoke.sh            # config-only (fast, no deploy)
 #    ./tests/smoke.sh --up       # config + deploy core + wait for health
 #    ./tests/smoke.sh --up --profile devops
+#    ./tests/smoke.sh --profile "*"        # assert every profile's service set
+#
+#  Note: there is no profile literally named `all`; `--profile all` is treated
+#  as the wildcard `*` here for convenience, but in raw compose you must use
+#  --profile "*".
 #
 #  Env:
 #    COMPOSE_FILE   path to docker-compose.yml (default: repo root)
@@ -29,7 +34,7 @@ PROFILES=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --up) DO_UP=1 ;;
-    --profile) shift; PROFILES+=(--profile "$1") ;;
+    --profile) shift; p="$1"; [ "$p" = "all" ] && p="*"; PROFILES+=(--profile "$p") ;;
     -h|--help) sed -n '2,20p' "${BASH_SOURCE[0]}"; exit 0 ;;
     *) echo "unknown arg: $1" >&2; exit 2 ;;
   esac
@@ -64,7 +69,17 @@ declare -A EXTRA=(
 )
 expected="$CORE"
 sel_profiles=""
-for ((i=0;i<${#PROFILES[@]};i+=2)); do p="${PROFILES[$((i+1))]}"; sel_profiles+="$p "; expected+=" ${EXTRA[$p]:-}"; done
+ALL_PROFILES="${!EXTRA[*]}"
+for ((i=0;i<${#PROFILES[@]};i+=2)); do
+  p="${PROFILES[$((i+1))]}"
+  # `--profile '*'` (or a bare `all`) means every profile — expand it so the
+  # service-set assertion actually checks the optional profiles too.
+  if [ "$p" = "*" ] || [ "$p" = "all" ]; then
+    for ep in $ALL_PROFILES; do sel_profiles+="$ep "; expected+=" ${EXTRA[$ep]}"; done
+  else
+    sel_profiles+="$p "; expected+=" ${EXTRA[$p]:-}"
+  fi
+done
 for c in $expected; do
   if grep -qE "^  ${c}:" <<<"$rendered"; then ok "service '$c' defined"; else bad "service '$c' MISSING"; fi
 done
