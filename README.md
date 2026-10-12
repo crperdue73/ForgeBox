@@ -1,3 +1,5 @@
+![ForgeBox — a datacenter you strike out of spare iron](branding/assets/banner-iron-tagline.jpg)
+
 # ForgeBox
 
 **Your enterprise homelab, unleashed.**
