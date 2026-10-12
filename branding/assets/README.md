@@ -77,7 +77,7 @@ for s in 32 48 180 192 512; do magick mark-three-bay.jpg -resize ${s}x${s} -stri
 
 ## Pending
 
-- `file_9a` (1254x1254 square) — unidentified, vision API refused it. Awaiting Robbie.
+- ~~`file_9a` (1254x1254 square)~~ — **RESOLVED 2026-10-12 17:4x ET**: it was WRAITH branding (cyan wireframe wolf), a different project, excluded.
 - ~~Favicon / 32px + 180px exports~~ — **DONE 2026-10-12 18:0x ET**, see Icons above.
 
 ## Not in this set
