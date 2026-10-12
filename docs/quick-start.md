@@ -48,8 +48,11 @@ docker compose --profile media up -d       # Jellyfin + friends
 Or bring up everything at once:
 
 ```bash
-docker compose --profile all up -d
+docker compose --profile "*" up -d
 ```
+
+> There is no profile named `all` — use the wildcard `--profile "*"` (quotes
+> required). `--profile all` matches nothing and starts core only.
 
 ## 6. Keep it healthy
 

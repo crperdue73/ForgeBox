@@ -5,7 +5,7 @@
 #  Deploy core:   docker compose up -d
 #  Add profiles:  docker compose --profile devops up -d
 #  Several:       docker compose --profile devops --profile media up -d
-#  Everything:    docker compose --profile all up -d
+#  Everything:    docker compose --profile "*" up -d   (quote the star!)
 #
 #  Docs: docs/   ·  Branding: branding/BRAND.md
 #  Maintained by CR Perdue Technologies. Project: ForgeBox.
@@ -444,10 +444,12 @@ services:
     profiles: [files]
 
 # ============================================================================
-#  AGGREGATE PROFILE  —  `--profile all` brings up everything optional
+#  AGGREGATE PROFILES  —  `--profile "*"` brings up everything optional
 # ============================================================================
-  # (Profiles compose additively; `all` is a convenience alias documented in
-  #  docs/quick-start.md: run e.g. `--profile all`.)
+  # (Profiles compose additively. There is no profile literally named `all`, so
+  #  `--profile all` matches nothing and silently starts core only — use the
+  #  wildcard `--profile "*"` (quotes required) to enable every profile, or
+  #  enumerate them: --profile devops --profile media ... See docs/quick-start.md.)
 
 volumes:
   # core

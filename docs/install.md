@@ -77,7 +77,7 @@ At minimum set a real password for Pi-hole (`PIHOLE_PASSWORD`) if you enable the
 ```bash
 docker compose up -d                 # core
 docker compose --profile devops up -d
-docker compose --profile all up -d   # everything
+docker compose --profile "*" up -d   # everything (wildcard; there is no `all` profile)
 ```
 
 Watch it come up:
@@ -91,8 +91,8 @@ Then open the dashboard: `http://<host-ip>:8080` (Heimdall).
 ## Uninstall
 
 ```bash
-docker compose --profile all down        # stop + remove containers
-docker compose --profile all down -v     # ALSO delete volumes (data loss!)
+docker compose --profile "*" down        # stop + remove containers
+docker compose --profile "*" down -v     # ALSO delete volumes (data loss!)
 ```
 
 ## First-login cheat sheet

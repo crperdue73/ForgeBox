@@ -47,8 +47,12 @@ ForgeBox uses **compose profiles** so a small host can run a subset and a big on
 docker compose up -d                                   # core only
 docker compose --profile devops up -d                  # core + DevOps
 docker compose --profile devops --profile media up -d  # several
-docker compose --profile all up -d                     # everything
+docker compose --profile "*" up -d                     # everything
 ```
+
+> **Note:** there is no profile literally named `all`. Use the wildcard
+> `--profile "*"` (keep the quotes so your shell doesn't glob it) to enable
+> every profile — `--profile all` silently starts core only.
 
 | Profile        | Services |
 |----------------|----------|
