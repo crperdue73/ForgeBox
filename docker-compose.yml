@@ -327,7 +327,10 @@ services:
       PAPERLESS_DBENGINE: postgresql
       PAPERLESS_DBUSER: paperless
       PAPERLESS_DBPASS: ${PAPERLESS_DBPASS:-paperless}
-      PAPERLESS_SECRET_KEY: ${PAPERLESS_SECRET_KEY:-changeme}
+      # Paperless-ngx refuses to boot if this is left at the placeholder, by
+      # design. install.sh seeds a unique value into .env before deploying;
+      # change-me here keeps that refusal explicit rather than silent.
+      PAPERLESS_SECRET_KEY: ${PAPERLESS_SECRET_KEY:-change-me}
       PAPERLESS_URL: ${PAPERLESS_URL:-http://localhost:8011}
       PAPERLESS_OCR_LANGUAGE: ${PAPERLESS_OCR_LANGUAGE:-eng}
     volumes:
@@ -361,6 +364,13 @@ services:
     <<: *common
     image: vikunja/vikunja:latest
     container_name: vikunja
+    # Vikunja's image ships /app/vikunja/files owned by root and the process
+    # runs as uid 1000. Under a user-namespace/rootless Docker (or a fresh
+    # named volume Docker initializes as root:root) the uid-1000 process
+    # cannot write it and the container crash-loops with
+    # "Could not init file handler: ... permission denied". Running as root
+    # inside the container is Vikunja's documented workaround for this case.
+    user: "0"
     ports: ["3456:3456"]
     environment:
       TZ: ${TZ:-America/New_York}
@@ -368,6 +378,11 @@ services:
       VIKUNJA_DATABASE_TYPE: sqlite
     volumes:
       - vikunja_data:/app/vikunja/files
+      # Vikunja's default SQLite config writes to /db/vikunja.db; without a
+      # volume at /db the process can't create the DB and crash-loops with
+      # "could not open database file ... /db/vikunja.db: no such file or
+      # directory". This mirrors Vikunja's documented compose.
+      - vikunja_db:/db
     profiles: [productivity]
 
   linkding:
@@ -464,6 +479,7 @@ volumes:
   paperless_redis_data:
   paperless_db_data:
   vikunja_data:
+  vikunja_db:
   linkding_data:
   n8n_data:
   # files
