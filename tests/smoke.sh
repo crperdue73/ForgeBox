@@ -73,15 +73,12 @@ sel_profiles=""
 ALL_PROFILES="${!EXTRA[*]}"
 for ((i=0;i<${#PROFILES[@]};i+=2)); do
   p="${PROFILES[$((i+1))]}"
-  # `--profile '*'` (or a bare `all`) means every profile NON-opt-in — expand it
-  # so the service-set assertion actually checks the optional profiles too.
-  # `vpn` (gluetun) is deliberately excluded: it needs a host /dev/net/tun node
-  # that unprivileged LXC containers lack, so a wildcard run must not demand it.
+  # `--profile '*'` (or a bare `all`) means every profile, `vpn` included — this
+  # mirrors what Docker actually does. Gluetun needs a host /dev/net/tun node, so
+  # on a host without it the wildcard run will error on gluetun alone (see
+  # docs/troubleshooting.md); run smoke with an explicit profile list on such hosts.
   if [ "$p" = "*" ] || [ "$p" = "all" ]; then
-    for ep in $ALL_PROFILES; do
-      [ "$ep" = "vpn" ] && continue
-      sel_profiles+="$ep "; expected+=" ${EXTRA[$ep]}"
-    done
+    for ep in $ALL_PROFILES; do sel_profiles+="$ep "; expected+=" ${EXTRA[$ep]}"; done
   else
     sel_profiles+="$p "; expected+=" ${EXTRA[$p]:-}"
   fi

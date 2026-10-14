@@ -127,6 +127,8 @@ Profiles are additive. A service with `profiles: [devops]` starts only when you 
 docker compose --profile devops --profile media up -d
 ```
 
-The `vpn` profile (Gluetun) is deliberately **excluded from the wildcard**: `--profile "*"`
-starts every profile *except* `vpn`, so a full-stack bring-up never fails on a host
-without `/dev/net/tun`. Opt in with `--profile vpn` when the device is available.
+The `vpn` profile (Gluetun) is kept out of `security` so the security profile runs clean
+without a VPN gateway. **Note the wildcard `--profile "*"` does include `vpn`** — on a
+host without `/dev/net/tun` that run brings up everything else and then errors on
+Gluetun alone. Opt in explicitly with `--profile vpn` (device present), or list
+every profile *except* `vpn` for a full bring-up on a tun-less host.

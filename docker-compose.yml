@@ -6,7 +6,7 @@
 #  Add profiles:  docker compose --profile devops up -d
 #  Several:       docker compose --profile devops --profile media up -d
 #  Everything:    docker compose --profile "*" up -d   (quote the star!)
-#                 (* = every profile except `vpn`; see gluetun below)
+#                 (* = every profile, `vpn`/gluetun included — see note below)
 #
 #  Docs: docs/   ·  Branding: branding/BRAND.md
 #  Maintained by CR Perdue Technologies. Project: ForgeBox.

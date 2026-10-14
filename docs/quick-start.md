@@ -53,6 +53,20 @@ docker compose --profile "*" up -d
 
 > There is no profile named `all` — use the wildcard `--profile "*"` (quotes
 > required). `--profile all` matches nothing and starts core only.
+>
+> **Heads up — `vpn` / Gluetun.** The wildcard *includes* the `vpn` profile, and
+> Gluetun needs a host `/dev/net/tun` device node (present on bare metal and in
+> VMs; absent in unprivileged LXC by default). On a host without it, the wildcard
+> run will bring up everything else and then error on Gluetun alone:
+>
+> ```
+> error gathering device information while adding custom device "/dev/net/tun"
+> ```
+>
+> Everything else keeps running — the failure is isolated to Gluetun. Either
+> enable tun on the host (see `docs/troubleshooting.md`), or bring up the stack
+> without it: `docker compose --profile security --profile devops --profile media \
+> --profile productivity --profile files up -d` (i.e. every profile *except* `vpn`).
 
 ## 6. Keep it healthy
 

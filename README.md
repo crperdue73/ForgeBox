@@ -68,10 +68,12 @@ docker compose --profile "*" up -d                     # everything
 
 **Gluetun is opt-in.** It's the only service in the `vpn` profile and needs a host
 `/dev/net/tun` device node (present on bare metal / VMs, absent in unprivileged
-LXC by default). Because it isn't in `security`, the wildcard `--profile "*"`
-skips it — so nothing errors on a host without tun. To run it, ensure the device
-exists and start it explicitly: `docker compose --profile vpn up -d`. See
-[`docs/troubleshooting.md`](docs/troubleshooting.md).
+LXC by default). It is **not** part of the `security` profile, so `--profile security`
+runs clean without it. Note the wildcard `--profile "*"` *does* include `vpn` — on a
+host without tun that run brings up everything else and then errors on Gluetun alone
+(everything else keeps running). To run Gluetun, ensure the device exists (see
+[`docs/troubleshooting.md`](docs/troubleshooting.md)) and start it explicitly:
+`docker compose --profile vpn up -d`.
 
 ## Documentation
 
