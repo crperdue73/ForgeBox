@@ -110,6 +110,15 @@ On bare metal that node always exists. In an **unprivileged LXC/incus container*
 must pass it through — the kernel has tun support, but the container has no `/dev/net/tun`
 device node, so the container never starts.
 
+**Gluetun is opt-in by design.** It lives in its own `vpn` profile, *not* in
+`security`, so a plain `up -d`, `--profile security`, or `--profile "*"` never tries
+to start it — and never errors on a host without `/dev/net/tun`. You only ever hit
+the symptom below if you ask for it explicitly:
+
+```bash
+docker compose --profile vpn up -d
+```
+
 Fix (run on the **LXC host**, not inside the container), replace `VMID` with the
 container's id, then restart the container:
 
@@ -121,8 +130,8 @@ lxc.mount.entry: /dev/net/tun dev/net/tun none bind,create=file
 
 Or run ForgeBox inside a **privileged** LXC / a VM / bare metal. `wireguard` (also in the
 `security` profile) runs without the node but still needs a valid peer config to build a
-tunnel. Neither VPN service is required for the rest of the stack — skip the `security`
-profile if you don't need a VPN gateway.
+tunnel. Gluetun is not required for the rest of the stack — just don't pass
+`--profile vpn` on a host that lacks the device, and everything else runs fine.
 
 ## Out of disk
 

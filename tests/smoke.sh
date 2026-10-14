@@ -61,7 +61,8 @@ head_ "2. expected services present"
 # profile is selected. Keep this list in sync with docker-compose.yml.
 CORE="portainer heimdall npm uptime-kuma watchtower glances"
 declare -A EXTRA=(
-  [security]="pihole wireguard vaultwarden gluetun"
+  [security]="pihole wireguard vaultwarden"
+  [vpn]="gluetun"
   [devops]="gitea semaphore jenkins code-server guacamole"
   [media]="jellyfin sonarr radarr prowlarr qbittorrent overseerr"
   [productivity]="homeassistant paperless-ngx paperless_redis paperless_db vikunja linkding n8n"
@@ -72,10 +73,15 @@ sel_profiles=""
 ALL_PROFILES="${!EXTRA[*]}"
 for ((i=0;i<${#PROFILES[@]};i+=2)); do
   p="${PROFILES[$((i+1))]}"
-  # `--profile '*'` (or a bare `all`) means every profile — expand it so the
-  # service-set assertion actually checks the optional profiles too.
+  # `--profile '*'` (or a bare `all`) means every profile NON-opt-in — expand it
+  # so the service-set assertion actually checks the optional profiles too.
+  # `vpn` (gluetun) is deliberately excluded: it needs a host /dev/net/tun node
+  # that unprivileged LXC containers lack, so a wildcard run must not demand it.
   if [ "$p" = "*" ] || [ "$p" = "all" ]; then
-    for ep in $ALL_PROFILES; do sel_profiles+="$ep "; expected+=" ${EXTRA[$ep]}"; done
+    for ep in $ALL_PROFILES; do
+      [ "$ep" = "vpn" ] && continue
+      sel_profiles+="$ep "; expected+=" ${EXTRA[$ep]}"
+    done
   else
     sel_profiles+="$p "; expected+=" ${EXTRA[$p]:-}"
   fi

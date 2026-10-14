@@ -6,6 +6,7 @@
 #  Add profiles:  docker compose --profile devops up -d
 #  Several:       docker compose --profile devops --profile media up -d
 #  Everything:    docker compose --profile "*" up -d   (quote the star!)
+#                 (* = every profile except `vpn`; see gluetun below)
 #
 #  Docs: docs/   ·  Branding: branding/BRAND.md
 #  Maintained by CR Perdue Technologies. Project: ForgeBox.
@@ -144,6 +145,12 @@ services:
       - vaultwarden_data:/data
     profiles: [security]
 
+  # Gluetun is gated behind its OWN opt-in profile (not `security`) because it
+  # needs a host `/dev/net/tun` device node that unprivileged LXC/incus
+  # containers don't have by default. Keeping it out of `security` means a plain
+  # `up -d`, `--profile security`, or `--profile "*"` never errors on hosts
+  # without tun. Opt in explicitly once the host provides the device:
+  #   docker compose --profile vpn up -d
   gluetun:
     <<: *common
     image: qmcgaw/gluetun:latest
@@ -158,7 +165,7 @@ services:
       WIREGUARD_PRIVATE_KEY: ${WIREGUARD_PRIVATE_KEY:-}
       WIREGUARD_ADDRESSES: ${WIREGUARD_ADDRESSES:-}
       SERVER_COUNTRIES: ${SERVER_COUNTRIES:-}
-    profiles: [security]
+    profiles: [vpn]
 
 # ============================================================================
 #  DEVOPS — The DragonForge Core  (--profile devops)

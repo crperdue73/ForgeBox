@@ -59,11 +59,19 @@ docker compose --profile "*" up -d                     # everything
 | Profile        | Services |
 |----------------|----------|
 | *(core, none)* | Portainer, Heimdall, Nginx Proxy Manager, Uptime Kuma, Watchtower, Glances |
-| `security`     | Pi-hole, WireGuard, Vaultwarden, Gluetun |
+| `security`     | Pi-hole, WireGuard, Vaultwarden |
+| `vpn`          | Gluetun *(opt-in — needs a host `/dev/net/tun`; see below)* |
 | `devops`       | Gitea, Semaphore, Jenkins, code-server, Guacamole |
 | `media`        | Jellyfin, Sonarr, Radarr, Prowlarr, qBittorrent, Overseerr |
 | `productivity` | Home Assistant, Paperless-ngx, Vikunja, Linkding, n8n |
 | `files`        | Nextcloud, Syncthing, Chibisafe |
+
+**Gluetun is opt-in.** It's the only service in the `vpn` profile and needs a host
+`/dev/net/tun` device node (present on bare metal / VMs, absent in unprivileged
+LXC by default). Because it isn't in `security`, the wildcard `--profile "*"`
+skips it — so nothing errors on a host without tun. To run it, ensure the device
+exists and start it explicitly: `docker compose --profile vpn up -d`. See
+[`docs/troubleshooting.md`](docs/troubleshooting.md).
 
 ## Documentation
 
