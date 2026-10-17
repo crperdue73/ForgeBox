@@ -67,3 +67,18 @@ Compose scopes names to the project directory. With `container_name` set, a host
 supported exactly one ForgeBox — a second `up` collided on container names and on
 the network. Removing both is what makes two students, or two lessons, able to run
 side by side.
+
+## Host ports come from `.env`, so a second instance can coexist
+
+Every published host port is `${FB_PORT_<SERVICE>:-<default>}`. The defaults are
+the same as they have always been, so a single instance behaves exactly as before.
+A second instance on the same host overrides the range:
+
+```bash
+COMPOSE_PROJECT_NAME=forgebox-2 FB_PORT_OFFSET=1000 docker compose up -d
+```
+
+A second project cannot collide on container names or the network any more, but it
+*will* still collide on host ports unless the ports move. Override them or accept
+one instance per host — there is no third option, because the host's ports are a
+single namespace that compose cannot scope.

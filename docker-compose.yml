@@ -12,7 +12,9 @@
 #  Maintained by CR Perdue Technologies. Project: ForgeBox.
 # ============================================================================
 
-name: forgebox
+# Project name defaults to this, but can be overridden per instance:
+#   COMPOSE_PROJECT_NAME=forgebox-2 docker compose up -d
+name: ${COMPOSE_PROJECT_NAME:-forgebox}
 
 # --- Reusable anchors -------------------------------------------------------
 x-restart: &restart
@@ -41,7 +43,7 @@ services:
     <<: *common
     image: portainer/portainer-ce:latest
     command: -H unix:///var/run/docker.sock
-    ports: ["9000:9000"]
+    ports: ["${FB_PORT_PORTAINER:-9000}:9000"]
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - portainer_data:/data
@@ -50,7 +52,7 @@ services:
   heimdall:
     <<: *common
     image: lscr.io/linuxserver/heimdall:latest
-    ports: ["8080:80", "8443:443"]
+    ports: ["${FB_PORT_HEIMDALL:-8080}:80", "${FB_PORT_HEIMDALL_TLS:-8443}:443"]
     volumes:
       - heimdall_config:/config
     profiles: []
@@ -58,7 +60,7 @@ services:
   npm:
     <<: *common
     image: jc21/nginx-proxy-manager:latest
-    ports: ["80:80", "443:443", "81:81"]
+    ports: ["${FB_PORT_NPM:-80}:80", "${FB_PORT_NPM_TLS:-443}:443", "${FB_PORT_NPM_ADMIN:-81}:81"]
     volumes:
       - npm_data:/data
       - npm_letsencrypt:/etc/letsencrypt
@@ -67,7 +69,7 @@ services:
   uptime-kuma:
     <<: *common
     image: louislam/uptime-kuma:1
-    ports: ["3001:3001"]
+    ports: ["${FB_PORT_UPTIME_KUMA:-3001}:3001"]
     volumes:
       - uptime_kuma_data:/app/data
     profiles: []
@@ -98,7 +100,7 @@ services:
     <<: *common
     image: nicolargo/glances:latest-full
     pid: host
-    ports: ["61208:61208"]
+    ports: ["${FB_PORT_GLANCES:-61208}:61208"]
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:
@@ -112,7 +114,7 @@ services:
   pihole:
     <<: *common
     image: pihole/pihole:latest
-    ports: ["53:53/tcp", "53:53/udp", "8010:80/tcp"]
+    ports: ["${FB_PORT_PIHOLE:-53}:53/tcp", "${FB_PORT_PIHOLE:-53}:53/udp", "${FB_PORT_PIHOLE_WEB:-8010}:80/tcp"]
     environment:
       TZ: ${TZ:-America/New_York}
       WEBPASSWORD: ${PIHOLE_PASSWORD:?set PIHOLE_PASSWORD in .env}
@@ -125,7 +127,7 @@ services:
   wireguard:
     <<: *common
     image: lscr.io/linuxserver/wireguard:latest
-    ports: ["51820:51820/udp"]
+    ports: ["${FB_PORT_WIREGUARD:-51820}:51820/udp"]
     cap_add: [NET_ADMIN, SYS_MODULE]
     sysctls:
       net.ipv4.conf.all.src_valid_mark: "1"
@@ -137,7 +139,7 @@ services:
   vaultwarden:
     <<: *common
     image: vaultwarden/server:latest
-    ports: ["8020:80"]
+    ports: ["${FB_PORT_VAULTWARDEN:-8020}:80"]
     volumes:
       - vaultwarden_data:/data
     profiles: [security]
@@ -153,7 +155,7 @@ services:
     image: qmcgaw/gluetun:latest
     cap_add: [NET_ADMIN]
     devices: [/dev/net/tun:/dev/net/tun]
-    ports: ["8888:8888/tcp"]
+    ports: ["${FB_PORT_GLUETUN:-8888}:8888/tcp"]
     environment:
       TZ: ${TZ:-America/New_York}
       VPN_SERVICE_PROVIDER: ${VPN_SERVICE_PROVIDER:-custom}
@@ -169,7 +171,7 @@ services:
   gitea:
     <<: *common
     image: gitea/gitea:latest
-    ports: ["3000:3000", "2222:22"]
+    ports: ["${FB_PORT_GITEA:-3000}:3000", "${FB_PORT_GITEA_SSH:-2222}:22"]
     volumes:
       - gitea_data:/data
     environment:
@@ -185,7 +187,7 @@ services:
     # ("unknown store type" in NewTerraformStore, upstream issue #4126).
     # v2.18.10 is the last known-good release on bolt.
     image: semaphoreui/semaphore:v2.18.10
-    ports: ["3010:3000"]
+    ports: ["${FB_PORT_SEMAPHORE:-3010}:3000"]
     environment:
       TZ: ${TZ:-America/New_York}
       SEMAPHORE_DB_DIALECT: bolt
@@ -201,7 +203,7 @@ services:
     <<: *common
     image: jenkins/jenkins:lts-jdk17
     user: root
-    ports: ["8081:8080", "50000:50000"]
+    ports: ["${FB_PORT_JENKINS:-8081}:8080", "${FB_PORT_JENKINS_AGENT:-50000}:50000"]
     volumes:
       - jenkins_home:/var/jenkins_home
     profiles: [devops]
@@ -210,7 +212,7 @@ services:
     <<: *common
     image: lscr.io/linuxserver/code-server:latest
     # 8444 (8443 is Heimdall's HTTPS port in core)
-    ports: ["8444:8443"]
+    ports: ["${FB_PORT_CODE_SERVER:-8444}:8443"]
     environment:
       # linuxserver image defaults to auth: none — an open browser IDE with shell
       # access. Gate it: PASSWORD sets the login prompt. Seeded from .env.
@@ -222,7 +224,7 @@ services:
   guacamole:
     <<: *common
     image: flcontainers/guacamole:latest
-    ports: ["8082:8080"]
+    ports: ["${FB_PORT_GUACAMOLE:-8082}:8080"]
     environment:
       TZ: ${TZ:-America/New_York}
     volumes:
@@ -235,7 +237,7 @@ services:
   jellyfin:
     <<: *common
     image: lscr.io/linuxserver/jellyfin:latest
-    ports: ["8096:8096"]
+    ports: ["${FB_PORT_JELLYFIN:-8096}:8096"]
     volumes:
       - jellyfin_config:/config
       - ${MEDIA_PATH:-./data/media}:/data/media
@@ -244,7 +246,7 @@ services:
   sonarr:
     <<: *common
     image: lscr.io/linuxserver/sonarr:latest
-    ports: ["8989:8989"]
+    ports: ["${FB_PORT_SONARR:-8989}:8989"]
     volumes:
       - sonarr_config:/config
       - ${MEDIA_PATH:-./data/media}:/data/media
@@ -253,7 +255,7 @@ services:
   radarr:
     <<: *common
     image: lscr.io/linuxserver/radarr:latest
-    ports: ["7878:7878"]
+    ports: ["${FB_PORT_RADARR:-7878}:7878"]
     volumes:
       - radarr_config:/config
       - ${MEDIA_PATH:-./data/media}:/data/media
@@ -262,7 +264,7 @@ services:
   prowlarr:
     <<: *common
     image: lscr.io/linuxserver/prowlarr:latest
-    ports: ["9696:9696"]
+    ports: ["${FB_PORT_PROWLARR:-9696}:9696"]
     volumes:
       - prowlarr_config:/config
     profiles: [media]
@@ -270,7 +272,7 @@ services:
   qbittorrent:
     <<: *common
     image: lscr.io/linuxserver/qbittorrent:latest
-    ports: ["8085:8085"]
+    ports: ["${FB_PORT_QBITTORRENT:-8085}:8085"]
     environment:
       TZ: ${TZ:-America/New_York}
       PUID: ${PUID:-1000}
@@ -284,7 +286,7 @@ services:
   overseerr:
     <<: *common
     image: sctx/overseerr:latest
-    ports: ["5055:5055"]
+    ports: ["${FB_PORT_OVERSEERR:-5055}:5055"]
     volumes:
       - overseerr_config:/config
     profiles: [media]
@@ -309,7 +311,7 @@ services:
   paperless-ngx:
     <<: *common
     image: ghcr.io/paperless-ngx/paperless-ngx:latest
-    ports: ["8011:8000"]
+    ports: ["${FB_PORT_PAPERLESS:-8011}:8000"]
     environment:
       TZ: ${TZ:-America/New_York}
       PAPERLESS_REDIS: redis://paperless_redis:6379
@@ -364,7 +366,7 @@ services:
     # "Could not init file handler: ... permission denied". Running as root
     # inside the container is Vikunja's documented workaround for this case.
     user: "0"
-    ports: ["3456:3456"]
+    ports: ["${FB_PORT_VIKUNJA:-3456}:3456"]
     environment:
       TZ: ${TZ:-America/New_York}
       VIKUNJA_SERVICE_PUBLICURL: ${VIKUNJA_URL:-http://localhost:3456}
@@ -381,7 +383,7 @@ services:
   linkding:
     <<: *common
     image: sissbruecker/linkding:latest
-    ports: ["9090:9090"]
+    ports: ["${FB_PORT_LINKDING:-9090}:9090"]
     volumes:
       - linkding_data:/etc/linkding/data
     profiles: [productivity]
@@ -389,7 +391,7 @@ services:
   n8n:
     <<: *common
     image: docker.n8n.io/n8nio/n8n:latest
-    ports: ["5678:5678"]
+    ports: ["${FB_PORT_N8N:-5678}:5678"]
     environment:
       TZ: ${TZ:-America/New_York}
       N8N_HOST: ${N8N_HOST:-localhost}
@@ -408,7 +410,7 @@ services:
     image: lscr.io/linuxserver/nextcloud:latest
     # lsio's nextcloud runs nginx on 80 inside the container — there is no 443
     # listener. Front it with nginx-proxy-manager (core profile) for TLS.
-    ports: ["8030:80"]
+    ports: ["${FB_PORT_NEXTCLOUD:-8030}:80"]
     volumes:
       - nextcloud_config:/config
       - nextcloud_data:/data
@@ -417,7 +419,7 @@ services:
   syncthing:
     <<: *common
     image: lscr.io/linuxserver/syncthing:latest
-    ports: ["8384:8384", "22000:22000/tcp", "22000:22000/udp", "21027:21027/udp"]
+    ports: ["${FB_PORT_SYNCTHING:-8384}:8384", "${FB_PORT_SYNCTHING_SYNC:-22000}:22000/tcp", "${FB_PORT_SYNCTHING_SYNC:-22000}:22000/udp", "${FB_PORT_SYNCTHING_DISC:-21027}:21027/udp"]
     volumes:
       - syncthing_config:/config
     profiles: [files]
@@ -427,7 +429,7 @@ services:
     image: chibisafe/chibisafe:latest
     # Chibisafe v4 (Next.js) listens on 8001 inside the container (image sets
     # PORT=8001); mapping 8000 leaves nothing listening and connections reset.
-    ports: ["8040:8001"]
+    ports: ["${FB_PORT_CHIBISAFE:-8040}:8001"]
     volumes:
       - chibisafe_data:/app/database
       - chibisafe_uploads:/app/uploads
