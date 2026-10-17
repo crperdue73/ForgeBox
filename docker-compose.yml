@@ -22,6 +22,8 @@ x-restart: &restart
 
 x-common: &common
   restart: unless-stopped
+  # Network KEY (not name): compose scopes it per project, so two labs get two
+  # networks. Only this anchor and paperless-ngx declare it — keep both in sync.
   networks: [forgebox]
   environment:
     TZ: ${TZ:-America/New_York}
@@ -323,8 +325,12 @@ services:
       # design. install.sh seeds a unique value into .env before deploying;
       # change-me here keeps that refusal explicit rather than silent.
       PAPERLESS_SECRET_KEY: ${PAPERLESS_SECRET_KEY:-change-me}
-      PAPERLESS_URL: ${PAPERLESS_URL:-http://localhost:8011}
+      # Follows the published port so a second instance does not advertise
+      # the first instance's URL.
+      PAPERLESS_URL: ${PAPERLESS_URL:-http://localhost:${FB_PORT_PAPERLESS:-8011}}
       PAPERLESS_OCR_LANGUAGE: ${PAPERLESS_OCR_LANGUAGE:-eng}
+    # paperless-ngx inherits `networks: [forgebox]` from *common. If that key is
+    # ever renamed, this is the service that gets forgotten — hence the comment.
     volumes:
       - paperless_data:/usr/src/paperless/data
       - paperless_media:/usr/src/paperless/media

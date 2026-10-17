@@ -12,8 +12,9 @@ hardware can carry.
 | **Heimdall** | core | 8080, 8443 | Dashboard / launchpad |
 | **Nginx Proxy Manager** | core | 80, 443, 81 | Reverse proxy + SSL |
 | **Uptime Kuma** | core | 3001 | Service monitoring + alerts |
-| **Watchtower** | core | — | Automated container updates |
+| **Watchtower** | autoupdate (opt-in) | — | Automated container updates — **not** in core, off in classrooms |
 | **Glances** | core | 61208 | Real-time system monitoring |
+| **ForgeBox** | core | — | Installer/status helper container |
 | Pi-hole | security | 53, 8010 | Network DNS + ad blocking |
 | WireGuard | security | 51820/udp | VPN server |
 | Vaultwarden | security | 8020 | Password manager |
@@ -41,6 +42,32 @@ hardware can carry.
 > Note: **code-server** upstream defaults to 8443, the same number **Heimdall** uses
 > for its HTTPS port. ForgeBox maps code-server to host **8444** so both can run at
 > once (see the Troubleshooting doc). Heimdall keeps 8443.
+
+## Overriding ports
+
+Every host port above is set by an `FB_PORT_*` variable with the value shown as
+its default. None of them need to be set for a normal install. They exist so a
+second ForgeBox instance can run on the same host:
+
+```bash
+# .env for a second instance
+COMPOSE_PROJECT_NAME=forgebox-2
+FB_PORT_PORTAINER=19000
+FB_PORT_NPM=180
+FB_PORT_NPM_TLS=1443
+FB_PORT_NPM_ADMIN=181
+FB_PORT_NEXTCLOUD=18030
+# ...and so on for whichever profiles you enable
+```
+
+The full annotated list lives in `.env.example`. Two notes about how these are
+used:
+
+- **Same host port on two protocols is legal and expected.** Pi-hole uses one
+  `FB_PORT_PIHOLE` for both TCP and UDP 53; Syncthing uses one
+  `FB_PORT_SYNCTHING_SYNC` for both TCP and UDP 22000. That is not a collision.
+- **`FB_PORT_OFFSET` does not exist.** There is no arithmetic in compose
+  interpolation; set the individual values.
 
 ## First-login defaults (by profile)
 
