@@ -27,8 +27,9 @@ x-common: &common
     PGID: ${PGID:-1000}
 
 networks:
+  # No fixed `name:` — compose scopes the network to the project directory, so
+  # two ForgeBox instances (two students, two lessons) can run side by side.
   forgebox:
-    name: forgebox
     driver: bridge
 
 # ============================================================================
@@ -39,7 +40,6 @@ services:
   portainer:
     <<: *common
     image: portainer/portainer-ce:latest
-    container_name: portainer
     command: -H unix:///var/run/docker.sock
     ports: ["9000:9000"]
     volumes:
@@ -50,7 +50,6 @@ services:
   heimdall:
     <<: *common
     image: lscr.io/linuxserver/heimdall:latest
-    container_name: heimdall
     ports: ["8080:80", "8443:443"]
     volumes:
       - heimdall_config:/config
@@ -59,7 +58,6 @@ services:
   npm:
     <<: *common
     image: jc21/nginx-proxy-manager:latest
-    container_name: npm
     ports: ["80:80", "443:443", "81:81"]
     volumes:
       - npm_data:/data
@@ -69,7 +67,6 @@ services:
   uptime-kuma:
     <<: *common
     image: louislam/uptime-kuma:1
-    container_name: uptime-kuma
     ports: ["3001:3001"]
     volumes:
       - uptime_kuma_data:/app/data
@@ -78,7 +75,6 @@ services:
   watchtower:
     <<: *common
     image: containrrr/watchtower:latest
-    container_name: watchtower
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
@@ -91,12 +87,16 @@ services:
       WATCHTOWER_CLEANUP: "true"
       WATCHTOWER_POLL_INTERVAL: "86400"
       WATCHTOWER_ROLLING_RESTART: "true"
-    profiles: []
+    # NOT core. Auto-update opens one-way doors unattended: nextcloud app
+    # versions cannot be downgraded, n8n migrates its SQLite schema with no
+    # rollback, and postgres refuses (or worse, silently misses) a data
+    # directory from a newer major. A classroom must be able to answer
+    # "what version am I on" without a machine changing the answer overnight.
+    profiles: [autoupdate]
 
   glances:
     <<: *common
     image: nicolargo/glances:latest-full
-    container_name: glances
     pid: host
     ports: ["61208:61208"]
     volumes:
@@ -112,7 +112,6 @@ services:
   pihole:
     <<: *common
     image: pihole/pihole:latest
-    container_name: pihole
     ports: ["53:53/tcp", "53:53/udp", "8010:80/tcp"]
     environment:
       TZ: ${TZ:-America/New_York}
@@ -126,7 +125,6 @@ services:
   wireguard:
     <<: *common
     image: lscr.io/linuxserver/wireguard:latest
-    container_name: wireguard
     ports: ["51820:51820/udp"]
     cap_add: [NET_ADMIN, SYS_MODULE]
     sysctls:
@@ -139,7 +137,6 @@ services:
   vaultwarden:
     <<: *common
     image: vaultwarden/server:latest
-    container_name: vaultwarden
     ports: ["8020:80"]
     volumes:
       - vaultwarden_data:/data
@@ -154,7 +151,6 @@ services:
   gluetun:
     <<: *common
     image: qmcgaw/gluetun:latest
-    container_name: gluetun
     cap_add: [NET_ADMIN]
     devices: [/dev/net/tun:/dev/net/tun]
     ports: ["8888:8888/tcp"]
@@ -173,7 +169,6 @@ services:
   gitea:
     <<: *common
     image: gitea/gitea:latest
-    container_name: gitea
     ports: ["3000:3000", "2222:22"]
     volumes:
       - gitea_data:/data
@@ -190,7 +185,6 @@ services:
     # ("unknown store type" in NewTerraformStore, upstream issue #4126).
     # v2.18.10 is the last known-good release on bolt.
     image: semaphoreui/semaphore:v2.18.10
-    container_name: semaphore
     ports: ["3010:3000"]
     environment:
       TZ: ${TZ:-America/New_York}
@@ -206,7 +200,6 @@ services:
   jenkins:
     <<: *common
     image: jenkins/jenkins:lts-jdk17
-    container_name: jenkins
     user: root
     ports: ["8081:8080", "50000:50000"]
     volumes:
@@ -216,7 +209,6 @@ services:
   code-server:
     <<: *common
     image: lscr.io/linuxserver/code-server:latest
-    container_name: code-server
     # 8444 (8443 is Heimdall's HTTPS port in core)
     ports: ["8444:8443"]
     environment:
@@ -230,7 +222,6 @@ services:
   guacamole:
     <<: *common
     image: flcontainers/guacamole:latest
-    container_name: guacamole
     ports: ["8082:8080"]
     environment:
       TZ: ${TZ:-America/New_York}
@@ -244,7 +235,6 @@ services:
   jellyfin:
     <<: *common
     image: lscr.io/linuxserver/jellyfin:latest
-    container_name: jellyfin
     ports: ["8096:8096"]
     volumes:
       - jellyfin_config:/config
@@ -254,7 +244,6 @@ services:
   sonarr:
     <<: *common
     image: lscr.io/linuxserver/sonarr:latest
-    container_name: sonarr
     ports: ["8989:8989"]
     volumes:
       - sonarr_config:/config
@@ -264,7 +253,6 @@ services:
   radarr:
     <<: *common
     image: lscr.io/linuxserver/radarr:latest
-    container_name: radarr
     ports: ["7878:7878"]
     volumes:
       - radarr_config:/config
@@ -274,7 +262,6 @@ services:
   prowlarr:
     <<: *common
     image: lscr.io/linuxserver/prowlarr:latest
-    container_name: prowlarr
     ports: ["9696:9696"]
     volumes:
       - prowlarr_config:/config
@@ -283,7 +270,6 @@ services:
   qbittorrent:
     <<: *common
     image: lscr.io/linuxserver/qbittorrent:latest
-    container_name: qbittorrent
     ports: ["8085:8085"]
     environment:
       TZ: ${TZ:-America/New_York}
@@ -298,7 +284,6 @@ services:
   overseerr:
     <<: *common
     image: sctx/overseerr:latest
-    container_name: overseerr
     ports: ["5055:5055"]
     volumes:
       - overseerr_config:/config
@@ -310,7 +295,6 @@ services:
   homeassistant:
     restart: unless-stopped
     image: ghcr.io/home-assistant/home-assistant:stable
-    container_name: homeassistant
     # Home Assistant needs host networking for device discovery (mDNS etc.),
     # so it does NOT use the shared *common anchor (which sets `networks`).
     network_mode: host
@@ -325,7 +309,6 @@ services:
   paperless-ngx:
     <<: *common
     image: ghcr.io/paperless-ngx/paperless-ngx:latest
-    container_name: paperless-ngx
     ports: ["8011:8000"]
     environment:
       TZ: ${TZ:-America/New_York}
@@ -350,7 +333,6 @@ services:
   paperless_redis:
     <<: *common
     image: redis:7
-    container_name: paperless_redis
     volumes:
       - paperless_redis_data:/data
     profiles: [productivity]
@@ -358,11 +340,16 @@ services:
   paperless_db:
     <<: *common
     image: postgres:16
-    container_name: paperless_db
     environment:
       POSTGRES_DB: paperless
       POSTGRES_USER: paperless
       POSTGRES_PASSWORD: ${PAPERLESS_DBPASS:-paperless}
+      # PGDATA is set explicitly so the path never comes from the image tag.
+      # The postgres 18 line moved the default to /var/lib/postgresql/18/docker;
+      # a container mounting the old path would start a *fresh empty* cluster,
+      # report healthy, and serve an empty paperless while the real data sat
+      # invisible on the volume. Pin the 16 minor exactly as well.
+      PGDATA: /var/lib/postgresql/data/pgdata
     volumes:
       - paperless_db_data:/var/lib/postgresql/data
     profiles: [productivity]
@@ -370,7 +357,6 @@ services:
   vikunja:
     <<: *common
     image: vikunja/vikunja:latest
-    container_name: vikunja
     # Vikunja's image ships /app/vikunja/files owned by root and the process
     # runs as uid 1000. Under a user-namespace/rootless Docker (or a fresh
     # named volume Docker initializes as root:root) the uid-1000 process
@@ -395,7 +381,6 @@ services:
   linkding:
     <<: *common
     image: sissbruecker/linkding:latest
-    container_name: linkding
     ports: ["9090:9090"]
     volumes:
       - linkding_data:/etc/linkding/data
@@ -404,7 +389,6 @@ services:
   n8n:
     <<: *common
     image: docker.n8n.io/n8nio/n8n:latest
-    container_name: n8n
     ports: ["5678:5678"]
     environment:
       TZ: ${TZ:-America/New_York}
@@ -422,8 +406,9 @@ services:
   nextcloud:
     <<: *common
     image: lscr.io/linuxserver/nextcloud:latest
-    container_name: nextcloud
-    ports: ["8030:443"]
+    # lsio's nextcloud runs nginx on 80 inside the container — there is no 443
+    # listener. Front it with nginx-proxy-manager (core profile) for TLS.
+    ports: ["8030:80"]
     volumes:
       - nextcloud_config:/config
       - nextcloud_data:/data
@@ -432,7 +417,6 @@ services:
   syncthing:
     <<: *common
     image: lscr.io/linuxserver/syncthing:latest
-    container_name: syncthing
     ports: ["8384:8384", "22000:22000/tcp", "22000:22000/udp", "21027:21027/udp"]
     volumes:
       - syncthing_config:/config
@@ -441,7 +425,6 @@ services:
   chibisafe:
     <<: *common
     image: chibisafe/chibisafe:latest
-    container_name: chibisafe
     # Chibisafe v4 (Next.js) listens on 8001 inside the container (image sets
     # PORT=8001); mapping 8000 leaves nothing listening and connections reset.
     ports: ["8040:8001"]
