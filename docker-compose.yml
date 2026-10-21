@@ -39,46 +39,75 @@ networks:
 # ============================================================================
 #  CORE  (always deployed — no profile)
 # ============================================================================
+
 services:
 
   portainer:
     <<: *common
-    image: portainer/portainer-ce:latest
+    image: portainer/portainer-ce:2.45.2
     command: -H unix:///var/run/docker.sock
     ports: ["${FB_PORT_PORTAINER:-9000}:9000"]
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - portainer_data:/data
     profiles: []
+    healthcheck:
+      # Portainer's image is distroless: there is no /bin/sh, so every
+      # CMD-SHELL probe fails with "exec: /bin/sh: no such file" no matter what
+      # is listening. Exec the binary directly instead — it is the one program
+      # we know is present, and it only returns 0 when the binary is intact.
+      test: ["CMD", "/portainer", "--version"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 180s
 
   heimdall:
     <<: *common
-    image: lscr.io/linuxserver/heimdall:latest
+    image: lscr.io/linuxserver/heimdall:2.8.3
     ports: ["${FB_PORT_HEIMDALL:-8080}:80", "${FB_PORT_HEIMDALL_TLS:-8443}:443"]
     volumes:
       - heimdall_config:/config
     profiles: []
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 3 bash -c 'cat < /dev/null > /dev/tcp/127.0.0.1/80' || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 180s
 
   npm:
     <<: *common
-    image: jc21/nginx-proxy-manager:latest
+    image: jc21/nginx-proxy-manager:2.16.0
     ports: ["${FB_PORT_NPM:-80}:80", "${FB_PORT_NPM_TLS:-443}:443", "${FB_PORT_NPM_ADMIN:-81}:81"]
     volumes:
       - npm_data:/data
       - npm_letsencrypt:/etc/letsencrypt
     profiles: []
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 3 bash -c 'cat < /dev/null > /dev/tcp/127.0.0.1/81' || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 180s
 
   uptime-kuma:
     <<: *common
-    image: louislam/uptime-kuma:1
+    image: louislam/uptime-kuma:2.5.6
     ports: ["${FB_PORT_UPTIME_KUMA:-3001}:3001"]
     volumes:
       - uptime_kuma_data:/app/data
     profiles: []
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 3 bash -c 'cat < /dev/null > /dev/tcp/127.0.0.1/3001' || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 180s
 
   watchtower:
     <<: *common
-    image: containrrr/watchtower:latest
+    image: containrrr/watchtower:1.7.1
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
@@ -100,22 +129,38 @@ services:
 
   glances:
     <<: *common
-    image: nicolargo/glances:latest-full
-    pid: host
+    image: nicolargo/glances:4.5.8-full
+    # NO `pid: host`. Verified on the LXC 2026-10-21: with pid:host, glances
+    # crashes on boot with `TypeError: gethostbyname() argument 1 must be str,
+    # bytes or bytearray, not None` in GlancesAutoDiscoverClient, because its
+    # own hostname does not resolve in the host PID namespace. Without pid:host
+    # the identical image runs stable (0 crashes / 20s idle probe). Glances
+    # still monitors every container via the mounted docker.sock, so host PID
+    # visibility is not needed.
     ports: ["${FB_PORT_GLANCES:-61208}:61208"]
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:
       TZ: ${TZ:-America/New_York}
+      # Glances hardcoded to container-monitoring only. Note: glances >=4.5
+      # calls socket.gethostbyname() on its own hostname while starting the
+      # REST API, so it crashes (TypeError: ... not None) if the container
+      # cannot resolve its hostname. Keep it on the compose network.
       GLANCES_OPT: "-w"
     profiles: []
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 3 bash -c 'cat < /dev/null > /dev/tcp/127.0.0.1/61208' || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 180s
 
 # ============================================================================
 #  SECURITY  (--profile security)
 # ============================================================================
   pihole:
     <<: *common
-    image: pihole/pihole:latest
+    image: pihole/pihole:2026.10.0
     ports: ["${FB_PORT_PIHOLE:-53}:53/tcp", "${FB_PORT_PIHOLE:-53}:53/udp", "${FB_PORT_PIHOLE_WEB:-8010}:80/tcp"]
     environment:
       TZ: ${TZ:-America/New_York}
@@ -125,10 +170,16 @@ services:
       - pihole_dnsmasq:/etc/dnsmasq.d
     cap_add: [NET_ADMIN]
     profiles: [security]
+    healthcheck:
+      test: ["CMD-SHELL", "pihole -v >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 180s
 
   wireguard:
     <<: *common
-    image: lscr.io/linuxserver/wireguard:latest
+    image: lscr.io/linuxserver/wireguard:1.0.20260223
     ports: ["${FB_PORT_WIREGUARD:-51820}:51820/udp"]
     cap_add: [NET_ADMIN, SYS_MODULE]
     sysctls:
@@ -137,14 +188,26 @@ services:
       - wireguard_config:/config
       - /lib/modules:/lib/modules:ro
     profiles: [security]
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 3 bash -c 'cat < /dev/null > /dev/tcp/127.0.0.1/51820' || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 180s
 
   vaultwarden:
     <<: *common
-    image: vaultwarden/server:latest
+    image: vaultwarden/server:1.37.4
     ports: ["${FB_PORT_VAULTWARDEN:-8020}:80"]
     volumes:
       - vaultwarden_data:/data
     profiles: [security]
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 3 bash -c 'cat < /dev/null > /dev/tcp/127.0.0.1/80' || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 180s
 
   # Gluetun is gated behind its OWN opt-in profile (not `security`) because it
   # needs a host `/dev/net/tun` device node that unprivileged LXC/incus
@@ -154,7 +217,7 @@ services:
   #   docker compose --profile vpn up -d
   gluetun:
     <<: *common
-    image: qmcgaw/gluetun:latest
+    image: qmcgaw/gluetun:v3.41.3
     cap_add: [NET_ADMIN]
     devices: [/dev/net/tun:/dev/net/tun]
     ports: ["${FB_PORT_GLUETUN:-8888}:8888/tcp"]
@@ -166,13 +229,19 @@ services:
       WIREGUARD_ADDRESSES: ${WIREGUARD_ADDRESSES:-}
       SERVER_COUNTRIES: ${SERVER_COUNTRIES:-}
     profiles: [vpn]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -T 3 -O /dev/null http://127.0.0.1:9999/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 180s
 
 # ============================================================================
 #  DEVOPS — The DragonForge Core  (--profile devops)
 # ============================================================================
   gitea:
     <<: *common
-    image: gitea/gitea:latest
+    image: gitea/gitea:28.2.0
     ports: ["${FB_PORT_GITEA:-3000}:3000", "${FB_PORT_GITEA_SSH:-2222}:22"]
     volumes:
       - gitea_data:/data
@@ -182,6 +251,12 @@ services:
       USER_UID: ${PUID:-1000}
       USER_GID: ${PGID:-1000}
     profiles: [devops]
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 3 bash -c 'cat < /dev/null > /dev/tcp/127.0.0.1/3000' || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 180s
 
   semaphore:
     <<: *common
@@ -200,6 +275,12 @@ services:
     volumes:
       - semaphore_data:/var/lib/semaphore
     profiles: [devops]
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 3 bash -c 'cat < /dev/null > /dev/tcp/127.0.0.1/3000' || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 180s
 
   jenkins:
     <<: *common
@@ -209,10 +290,16 @@ services:
     volumes:
       - jenkins_home:/var/jenkins_home
     profiles: [devops]
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 3 bash -c 'cat < /dev/null > /dev/tcp/127.0.0.1/8080' || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 180s
 
   code-server:
     <<: *common
-    image: lscr.io/linuxserver/code-server:latest
+    image: lscr.io/linuxserver/code-server:4.141.0
     # 8444 (8443 is Heimdall's HTTPS port in core)
     ports: ["${FB_PORT_CODE_SERVER:-8444}:8443"]
     environment:
@@ -222,58 +309,94 @@ services:
     volumes:
       - code_server_config:/config
     profiles: [devops]
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 3 bash -c 'cat < /dev/null > /dev/tcp/127.0.0.1/8443' || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 180s
 
   guacamole:
     <<: *common
-    image: flcontainers/guacamole:latest
+    image: flcontainers/guacamole:1.6.0
     ports: ["${FB_PORT_GUACAMOLE:-8082}:8080"]
     environment:
       TZ: ${TZ:-America/New_York}
     volumes:
       - guacamole_data:/config
     profiles: [devops]
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 3 bash -c 'cat < /dev/null > /dev/tcp/127.0.0.1/8080' || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 180s
 
 # ============================================================================
 #  MEDIA  (--profile media)
 # ============================================================================
   jellyfin:
     <<: *common
-    image: lscr.io/linuxserver/jellyfin:latest
+    image: lscr.io/linuxserver/jellyfin:10.11.11
     ports: ["${FB_PORT_JELLYFIN:-8096}:8096"]
     volumes:
       - jellyfin_config:/config
       - ${MEDIA_PATH:-./data/media}:/data/media
     profiles: [media]
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 3 bash -c 'cat < /dev/null > /dev/tcp/127.0.0.1/8096' || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 180s
 
   sonarr:
     <<: *common
-    image: lscr.io/linuxserver/sonarr:latest
+    image: lscr.io/linuxserver/sonarr:4.0.20
     ports: ["${FB_PORT_SONARR:-8989}:8989"]
     volumes:
       - sonarr_config:/config
       - ${MEDIA_PATH:-./data/media}:/data/media
     profiles: [media]
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 3 bash -c 'cat < /dev/null > /dev/tcp/127.0.0.1/8989' || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 180s
 
   radarr:
     <<: *common
-    image: lscr.io/linuxserver/radarr:latest
+    image: lscr.io/linuxserver/radarr:6.4.4
     ports: ["${FB_PORT_RADARR:-7878}:7878"]
     volumes:
       - radarr_config:/config
       - ${MEDIA_PATH:-./data/media}:/data/media
     profiles: [media]
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 3 bash -c 'cat < /dev/null > /dev/tcp/127.0.0.1/7878' || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 180s
 
   prowlarr:
     <<: *common
-    image: lscr.io/linuxserver/prowlarr:latest
+    image: lscr.io/linuxserver/prowlarr:2.6.5
     ports: ["${FB_PORT_PROWLARR:-9696}:9696"]
     volumes:
       - prowlarr_config:/config
     profiles: [media]
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 3 bash -c 'cat < /dev/null > /dev/tcp/127.0.0.1/9696' || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 180s
 
   qbittorrent:
     <<: *common
-    image: lscr.io/linuxserver/qbittorrent:latest
+    image: lscr.io/linuxserver/qbittorrent:5.3.0
     ports: ["${FB_PORT_QBITTORRENT:-8085}:8085"]
     environment:
       TZ: ${TZ:-America/New_York}
@@ -284,14 +407,26 @@ services:
       - qbittorrent_config:/config
       - ${MEDIA_PATH:-./data/media}:/data/media
     profiles: [media]
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 3 bash -c 'cat < /dev/null > /dev/tcp/127.0.0.1/8080' || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 180s
 
   overseerr:
     <<: *common
-    image: sctx/overseerr:latest
+    image: sctx/overseerr:1.35.0
     ports: ["${FB_PORT_OVERSEERR:-5055}:5055"]
     volumes:
       - overseerr_config:/config
     profiles: [media]
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 3 bash -c 'cat < /dev/null > /dev/tcp/127.0.0.1/5055' || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 180s
 
 # ============================================================================
 #  PRODUCTIVITY  (--profile productivity)
@@ -312,7 +447,7 @@ services:
 
   paperless-ngx:
     <<: *common
-    image: ghcr.io/paperless-ngx/paperless-ngx:latest
+    image: paperlessngx/paperless-ngx:3.3.3
     ports: ["${FB_PORT_PAPERLESS:-8011}:8000"]
     environment:
       TZ: ${TZ:-America/New_York}
@@ -337,6 +472,12 @@ services:
       - ${PAPERLESS_CONSUME:-./data/consume}:/usr/src/paperless/consume
     depends_on: [paperless_redis, paperless_db]
     profiles: [productivity]
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 3 bash -c 'cat < /dev/null > /dev/tcp/127.0.0.1/8000' || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 180s
 
   paperless_redis:
     <<: *common
@@ -364,7 +505,7 @@ services:
 
   vikunja:
     <<: *common
-    image: vikunja/vikunja:latest
+    image: vikunja/vikunja:2.7.1
     # Vikunja's image ships /app/vikunja/files owned by root and the process
     # runs as uid 1000. Under a user-namespace/rootless Docker (or a fresh
     # named volume Docker initializes as root:root) the uid-1000 process
@@ -385,18 +526,30 @@ services:
       # directory". This mirrors Vikunja's documented compose.
       - vikunja_db:/db
     profiles: [productivity]
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 3 bash -c 'cat < /dev/null > /dev/tcp/127.0.0.1/3456' || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 180s
 
   linkding:
     <<: *common
-    image: sissbruecker/linkding:latest
+    image: sissbruecker/linkding:1.47.0
     ports: ["${FB_PORT_LINKDING:-9090}:9090"]
     volumes:
       - linkding_data:/etc/linkding/data
     profiles: [productivity]
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 3 bash -c 'cat < /dev/null > /dev/tcp/127.0.0.1/9090' || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 180s
 
   n8n:
     <<: *common
-    image: docker.n8n.io/n8nio/n8n:latest
+    image: docker.n8n.io/n8nio/n8n:2.45.0
     ports: ["${FB_PORT_N8N:-5678}:5678"]
     environment:
       TZ: ${TZ:-America/New_York}
@@ -407,13 +560,19 @@ services:
     volumes:
       - n8n_data:/home/node/.n8n
     profiles: [productivity]
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 3 bash -c 'cat < /dev/null > /dev/tcp/127.0.0.1/5678' || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 180s
 
 # ============================================================================
 #  FILES  (--profile files)
 # ============================================================================
   nextcloud:
     <<: *common
-    image: lscr.io/linuxserver/nextcloud:latest
+    image: lscr.io/linuxserver/nextcloud:35.0.2
     # lsio's nextcloud runs nginx on 80 inside the container — there is no 443
     # listener. Front it with nginx-proxy-manager (core profile) for TLS.
     ports: ["${FB_PORT_NEXTCLOUD:-8030}:80"]
@@ -421,18 +580,30 @@ services:
       - nextcloud_config:/config
       - nextcloud_data:/data
     profiles: [files]
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 3 bash -c 'cat < /dev/null > /dev/tcp/127.0.0.1/80' || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 180s
 
   syncthing:
     <<: *common
-    image: lscr.io/linuxserver/syncthing:latest
+    image: lscr.io/linuxserver/syncthing:2.1.6
     ports: ["${FB_PORT_SYNCTHING:-8384}:8384", "${FB_PORT_SYNCTHING_SYNC:-22000}:22000/tcp", "${FB_PORT_SYNCTHING_SYNC:-22000}:22000/udp", "${FB_PORT_SYNCTHING_DISC:-21027}:21027/udp"]
     volumes:
       - syncthing_config:/config
     profiles: [files]
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 3 bash -c 'cat < /dev/null > /dev/tcp/127.0.0.1/8384' || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 180s
 
   chibisafe:
     <<: *common
-    image: chibisafe/chibisafe:latest
+    image: chibisafe/chibisafe:v6.6.1
     # Chibisafe v4 (Next.js) listens on 8001 inside the container (image sets
     # PORT=8001); mapping 8000 leaves nothing listening and connections reset.
     ports: ["${FB_PORT_CHIBISAFE:-8040}:8001"]
@@ -440,6 +611,12 @@ services:
       - chibisafe_data:/app/database
       - chibisafe_uploads:/app/uploads
     profiles: [files]
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 3 bash -c 'cat < /dev/null > /dev/tcp/127.0.0.1/8001' || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 180s
 
 # ============================================================================
 #  AGGREGATE PROFILES  —  `--profile "*"` brings up everything optional

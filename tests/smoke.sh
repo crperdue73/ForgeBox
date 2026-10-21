@@ -5,13 +5,15 @@
 #  Validates the product end to end without human eyes:
 #    1. `docker compose config` parses (the one compose file is valid)
 #    2. every expected service is present in the rendered config
-#    3. (optional, --up) bring the core profile up and wait for healthchecks
+#    3. no host port is published twice (fails on a real duplicate)
+#    4. pins: every image uses an explicit tag, not `latest`
+#    5. (optional, --up) deploy, wait on healthchecks, then hold a watch window
 #
 #  Usage:
-#    ./tests/smoke.sh            # config-only (fast, no deploy)
-#    ./tests/smoke.sh --up       # config + deploy core + wait for health
+#    ./tests/smoke.sh                       # config-only (fast, no deploy)
+#    ./tests/smoke.sh --up                  # config + deploy core + wait healthy
 #    ./tests/smoke.sh --up --profile devops
-#    ./tests/smoke.sh --profile "*"        # assert every profile's service set
+#    ./tests/smoke.sh --profile "*"         # assert every profile's service set
 #
 #  Note: there is no profile literally named `all`; `--profile all` is treated
 #  as the wildcard `*` here for convenience, but in raw compose you must use
@@ -19,15 +21,21 @@
 #
 #  Env:
 #    COMPOSE_FILE   path to docker-compose.yml (default: repo root)
-#    SMOKE_TIMEOUT  seconds to wait for containers to become healthy (60)
+#    SMOKE_TIMEOUT  seconds to wait for containers to become healthy (180)
+#    SMOKE_WATCH    seconds to keep watching after everything reports healthy (90)
 #
 #  Requires: docker + compose v2. Fails loud, exit non-zero on any failure.
+#
+#  Self-test: `SMOKE_SELFTEST=1 ./tests/smoke.sh` runs the port-conflict and
+#  tag checks against deliberately broken fixtures to prove those checks can
+#  actually fail. A test that cannot fail is not a test.
 # ============================================================================
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COMPOSE_FILE="${COMPOSE_FILE:-$REPO_ROOT/docker-compose.yml}"
-SMOKE_TIMEOUT="${SMOKE_TIMEOUT:-60}"
+SMOKE_TIMEOUT="${SMOKE_TIMEOUT:-180}"
+SMOKE_WATCH="${SMOKE_WATCH:-90}"
 DO_UP=0
 PROFILES=()
 
@@ -35,7 +43,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --up) DO_UP=1 ;;
     --profile) shift; p="$1"; [ "$p" = "all" ] && p="*"; PROFILES+=(--profile "$p") ;;
-    -h|--help) sed -n '2,20p' "${BASH_SOURCE[0]}"; exit 0 ;;
+    -h|--help) sed -n '2,29p' "${BASH_SOURCE[0]}"; exit 0 ;;
     *) echo "unknown arg: $1" >&2; exit 2 ;;
   esac
   shift
@@ -45,6 +53,120 @@ pass=0; fail=0
 ok()   { printf '\033[1;32m  PASS\033[0m %s\n' "$*"; pass=$((pass+1)); }
 bad()  { printf '\033[1;31m  FAIL\033[0m %s\n' "$*"; fail=$((fail+1)); }
 head_() { printf '\n\033[1;33m== %s ==\033[0m\n' "$*"; }
+
+# ---------------------------------------------------------------------------
+# Host-port extraction. Works on BOTH compose spellings, because ForgeBox uses
+# flow style (`ports: ["9000:9000"]`) and a future contributor may use block
+# style (`- "9000:9000"`). Published host ports are what two services can
+# collide on; container-internal ports collide freely and are none of our
+# business.
+#
+# Output: "<port>:<proto>" per published port, e.g. "53:tcp", "53:udp".
+# Mapping rule per entry, right to left: drop `/proto` if present; drop the
+# container port; what is left is the host side. `${VAR}` (or `${VAR:-default}`)
+# is resolved from .env.example (override with ENV_FILE=/path); an entry that
+# cannot be resolved prints `UNRESOLVED:<entry>` so a broken default is loud
+# rather than silently green. TCP and UDP are kept apart on purpose: binding the
+# same number for both is legal, binding it twice for one protocol is not.
+# ---------------------------------------------------------------------------
+host_ports() {
+  awk '
+    BEGIN {
+      # Emit the reference defaults as `export VAR=default` lines. awk only
+      # parses; the shell evaluates, so this works on bash 3.2 (macOS) where
+      # associative arrays do not exist.
+      envf = ENVIRON["ENV_FILE"]
+      if (envf == "") envf = ENVIRON["REPO_ROOT"] "/.env.example"
+      while ((getline ln < envf) > 0) {
+        line = ln
+        sub(/^[[:space:]]*#?[[:space:]]*/, "", line)
+        sub(/[[:space:]]*#.*/, "", line)
+        if (line !~ /^[A-Za-z_][A-Za-z0-9_]*=/) continue
+        k = line; sub(/=.*/, "", k)
+        v = line; sub(/^[^=]*=/, "", v)
+        gsub(/["'"'"'[:space:]]/, "", v)
+        printf "export %s=%s\n", k, v
+      }
+    }
+    /^[[:space:]]*ports:/ {
+      line = $0
+      sub(/^[[:space:]]*ports:[[:space:]]*\[?/, "", line)
+      sub(/\]?[[:space:]]*$/, "", line)
+      n = split(line, parts, ",")
+      for (i = 1; i <= n; i++) print parts[i]
+      found = 1; inp = 1; next
+    }
+    /^[[:space:]]*-[[:space:]]*["'"'"']?[0-9$]/ && inp { print $0; found = 1; next }
+    { inp = 0 }
+    END { if (!found) exit 3 }
+  ' "$1" | tr -d '"\r' | sed "s/'//g" \
+    | sed -E 's/^[[:space:]]*-?[[:space:]]*//; s/[[:space:]]+$//' \
+    | grep -Ev '^export |^[[:space:]]*$' \
+    | while IFS= read -r entry; do
+        [ -z "$entry" ] && continue
+        proto=tcp
+        case "$entry" in */udp*) proto=udp ;; esac
+        # strip "/proto" then the container port -> host side
+        host="${entry%%/*}"
+        host="${host%:*}"
+        case "$host" in
+          '${'*)
+            name="${host#\$\{}"; name="${name%%[:-]*}"; name="${name%\}}"
+            # NOTE: indirect expansion, not an associative array — this script
+            # runs on macOS bash 3.2 during the DragonForge lessons, and `env`
+            # is never a declared array there. Assigned only if the var exists,
+            # so `set -u` stays happy either way.
+            val=""
+            if eval "[ \"\${$name+x}\" = x ]"; then eval "val=\"\${$name}\""; fi
+            # inline default wins only when .env.example has no entry
+            case "$host" in *':-'*) dflt="${host##*:-}"; dflt="${dflt%\}}"; [ -z "$val" ] && val="$dflt" ;; esac
+            [ -z "$val" ] && val="UNRESOLVED:$host"
+            printf '%s:%s\n' "$val" "$proto" ;;
+          ''|*[!0-9]*) printf 'UNRESOLVED:%s:%s\n' "$host" "$proto" ;;
+          *) printf '%s:%s\n' "$host" "$proto" ;;
+        esac
+      done
+}
+
+# --selftest: prove the two static checks can fail -------------------------
+if [ "${SMOKE_SELFTEST:-0}" = "1" ]; then
+  head_ "0. self-test: the static checks can fail"
+  tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
+  notest=0
+  # a real collision: same host port, same protocol, flow style
+  printf 'services:\n  a:\n    ports: ["9000:9000"]\n  b:\n    ports: ["9000:80"]\n' > "$tmp/dup.yml"
+  if [ -n "$(host_ports "$tmp/dup.yml" | sort | uniq -d)" ]; then
+    ok "port check sees a duplicate in the fixture"; notest=1
+  else bad "port check MISSED a duplicate — section 3 cannot fail"; fi
+  # no collision: different host ports
+  printf 'services:\n  a:\n    ports: ["9000:9000"]\n  b:\n    ports: ["9001:80"]\n' > "$tmp/clean.yml"
+  if [ -z "$(host_ports "$tmp/clean.yml" | sort | uniq -d)" ]; then
+    ok "port check stays quiet on a clean fixture"
+  else bad "port check flagged a clean file"; fi
+  # block style must parse too
+  printf 'services:\n  a:\n    ports:\n      - "9100:9100"\n  b:\n    ports:\n      - "9100:80"\n' > "$tmp/block.yml"
+  if [ -n "$(host_ports "$tmp/block.yml" | sort | uniq -d)" ]; then
+    ok "port check parses block style"
+  else bad "port check MISSED a block-style duplicate"; fi
+  # same number on tcp and udp is legal (DNS, WireGuard, Syncthing) — must NOT flag
+  printf 'services:\n  a:\n    ports: ["53:53/tcp", "53:53/udp"]\n' > "$tmp/proto.yml"
+  if [ -z "$(host_ports "$tmp/proto.yml" | sort | uniq -d)" ]; then
+    ok "port check allows the same number on tcp and udp"
+  else bad "port check flagged a legal tcp/udp pair"; fi
+  # ${VAR} defaults must resolve, not silently vanish
+  printf '%s\n' 'services:' '  a:' '    ports: ["${FB_PORT_PORTAINER:-9000}:9000"]' > "$tmp/var.yml"
+  if [ "$(host_ports "$tmp/var.yml")" = "9000:tcp" ]; then
+    ok "port check resolves a var default from .env.example"
+  else bad "port check did not resolve the var placeholder (got: $(host_ports "$tmp/var.yml"))"; fi
+  # tag check must see :latest
+  printf 'services:\n  a:\n    image: nginx:latest\n' > "$tmp/latest.yml"
+  if grep -qE 'image:[[:space:]]*[^[:space:]]+:latest' "$tmp/latest.yml"; then
+    ok "tag check sees :latest in the fixture"
+  else bad "tag check MISSED :latest — section 4 cannot fail"; fi
+  head_ "self-test result"
+  printf 'passed=%d failed=%d\n' "$pass" "$fail"
+  [ "$fail" -eq 0 ] && { printf '\033[1;32mSELFTEST OK\033[0m\n'; exit 0; } || { printf '\033[1;31mSELFTEST FAILED\033[0m\n'; exit 1; }
+fi
 
 command -v docker >/dev/null 2>&1 || { echo "docker not found" >&2; exit 1; }
 
@@ -67,15 +189,16 @@ declare -A EXTRA=(
   [media]="jellyfin sonarr radarr prowlarr qbittorrent overseerr"
   [productivity]="homeassistant paperless-ngx paperless_redis paperless_db vikunja linkding n8n"
   [files]="nextcloud syncthing chibisafe"
+  [autoupdate]="watchtower"
 )
 expected="$CORE"
 sel_profiles=""
 ALL_PROFILES="${!EXTRA[*]}"
 for ((i=0;i<${#PROFILES[@]};i+=2)); do
   p="${PROFILES[$((i+1))]}"
-  # `--profile '*'` (or a bare `all`) means every profile, `vpn` included — this
-  # mirrors what Docker actually does. Gluetun needs a host /dev/net/tun node, so
-  # on a host without it the wildcard run will error on gluetun alone (see
+  # `--profile '*'` (or a bare `all`) means every profile — this mirrors what
+  # Docker actually does. Gluetun needs a host /dev/net/tun node, so on a host
+  # without it the wildcard deploy will error on gluetun alone (see
   # docs/troubleshooting.md); run smoke with an explicit profile list on such hosts.
   if [ "$p" = "*" ] || [ "$p" = "all" ]; then
     for ep in $ALL_PROFILES; do sel_profiles+="$ep "; expected+=" ${EXTRA[$ep]}"; done
@@ -83,35 +206,99 @@ for ((i=0;i<${#PROFILES[@]};i+=2)); do
     sel_profiles+="$p "; expected+=" ${EXTRA[$p]:-}"
   fi
 done
+expected="$(echo $expected | tr ' ' '\n' | awk '!seen[$0]++' | tr '\n' ' ')"
+# The rendered config is `services:` only (compose drops everything else), so a
+# 2-space-indented key is exactly a service definition. An awk map beats a
+# regex here — service names contain hyphens and underscores.
+svc_list="$(printf '%s\n' "$rendered" | awk '
+  /^services:[[:space:]]*$/ { ins = 1; next }
+  /^[^[:space:]]/ { ins = 0 }
+  ins && /^  [A-Za-z0-9_.-]+:[[:space:]]*$/ { k = $0; sub(/^  /, "", k); sub(/:.*/, "", k); print k }
+')"
 for c in $expected; do
-  if grep -qE "^  ${c}:" <<<"$rendered"; then ok "service '$c' defined"; else bad "service '$c' MISSING"; fi
+  if printf '%s\n' "$svc_list" | grep -qx "$c"; then
+    ok "service '$c' defined"
+  else bad "service '$c' MISSING"; fi
 done
 echo "    (profiles selected: ${sel_profiles:-core only})"
 
-head_ "3. port map has no internal conflicts"
-dupes="$(grep -oE '^\s+- "[0-9]+:[0-9]+' <<<"$rendered" | sed -E 's/.*"([0-9]+):.*/\1/' | sort | uniq -d || true)"
-if [ -z "$dupes" ]; then ok "no duplicate host ports"; else bad "duplicate host ports: $(echo $dupes | tr '\n' ' ')"; fi
+head_ "3. no host port published twice"
+# Uses the rendered config (ports substituted from .env), so a collision caused
+# by overridden FB_PORT_* values is caught, not just one in the defaults.
+# Read the rendered config: `${FB_PORT_X}` is already substituted there, so a
+# collision created by an override in .env is caught, not just one in the
+# defaults. host_ports still handles the ${VAR} form for the fixture self-test.
+rendered_tmp="$(mktemp)"; trap 'rm -f "$rendered_tmp"' EXIT
+printf '%s\n' "$rendered" > "$rendered_tmp"
+dupes="$(host_ports "$rendered_tmp" | sort | uniq -d || true)"
+if [ -z "$dupes" ]; then
+  ok "no duplicate host ports ($(host_ports "$rendered_tmp" | sort -u | wc -l | tr -d ' ') distinct)"
+else
+  bad "duplicate host ports: $(echo $dupes | tr '\n' ' ')"
+  for d in $dupes; do
+    port="${d%%:*}"
+    # name the services that publish it, so a failure points at a file line
+    # NB: use grep -F, not awk index(). mawk 1.3.4 returns 0 for needles like
+    # "9000:" preceded by "}" — a real bug that would silently blank this line.
+    where="$(awk '
+      /^  [A-Za-z0-9_.-]+:[[:space:]]*$/ { svc = $0; sub(/^  /, "", svc); sub(/:.*/, "", svc) }
+      { print NR "\t" svc "\t" $0 }
+    ' "$COMPOSE_FILE" | grep -F -- "$port:" | awk -F'\t' '{ printf "%s (line %s) ", $2, $1 }')"
+    echo "      $d -> ${where:-not found in compose file}"
+  done
+fi
+
+head_ "4. image tags are pinned"
+# grep exits 1 on no-match, so capture then test the string (not the exit code)
+pinned_bad="$(grep -nE '^[[:space:]]*image:[[:space:]]*[^[:space:]]+:latest' "$COMPOSE_FILE" || true)"
+if [ -n "$pinned_bad" ]; then
+  bad "unpinned \`:latest\` images: $(echo "$pinned_bad" | sed -E 's/.*image:[[:space:]]*//' | tr '\n' ' ')"
+else
+  ok "no \`:latest\` image tags ($(grep -cE '^[[:space:]]*image:' "$COMPOSE_FILE") images)"
+fi
 
 if [ "$DO_UP" -eq 1 ]; then
-  head_ "4. bring up + wait for healthy"
-  docker compose -f "$COMPOSE_FILE" ${PROFILES+"${PROFILES[@]}"} up -d
-  deadline=$(( $(date +%s) + SMOKE_TIMEOUT ))
-  # Collect expected *started* container names from the rendered config
-  names="$(grep -oE 'container_name: .*' <<<"$rendered" | awk '{print $2}')"
-  while :; do
-    all_ok=1
-    for n in $names; do
-      st="$(docker inspect -f '{{.State.Status}}' "$n" 2>/dev/null || echo missing)"
-      case "$st" in running) : ;; *) all_ok=0 ;; esac
+  head_ "5. deploy, wait for healthy, then hold"
+  # --wait blocks until every container is running *and* healthy, or fails.
+  # Services with no healthcheck (docs/healthchecks.md lists them) count as
+  # ready once running — their absence is documented, not accidental.
+  if docker compose -f "$COMPOSE_FILE" ${PROFILES+"${PROFILES[@]}"} up --detach --wait --wait-timeout "$SMOKE_TIMEOUT"; then
+    ok "compose up --wait completed within ${SMOKE_TIMEOUT}s"
+  else
+    bad "compose up --wait failed or timed out"; docker compose -f "$COMPOSE_FILE" ps || true
+  fi
+
+  # Names come from the project itself, never from `container_name:` (ForgeBox
+  # deliberately removed those so two labs can coexist).
+  proj="$(docker compose -f "$COMPOSE_FILE" config --format json 2>/dev/null | sed -E 's/.*"name"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/')"
+  ids="$(docker compose -f "$COMPOSE_FILE" ${PROFILES+"${PROFILES[@]}"} ps --quiet || true)"
+  if [ -z "$ids" ]; then
+    bad "no containers found after deploy"
+  else
+    for id in $ids; do
+      read -r name status health <<<"$(docker inspect -f '{{.Name}} {{.State.Status}} {{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$id" | sed 's|^/||')"
+      if [ "$status" != "running" ]; then bad "$name state=$status"
+      elif [ "$health" = "unhealthy" ]; then bad "$name unhealthy"
+      elif [ "$health" = "starting" ]; then bad "$name still starting after --wait"
+      else ok "$name running/$health"; fi
     done
-    [ "$all_ok" -eq 1 ] && break
-    [ "$(date +%s)" -ge "$deadline" ] && break
-    sleep 3
-  done
-  for n in $names; do
-    st="$(docker inspect -f '{{.State.Status}}' "$n" 2>/dev/null || echo missing)"
-    if [ "$st" = "running" ]; then ok "$n running"; else bad "$n state=$st"; fi
-  done
+  fi
+
+  # Watch window: a container that goes healthy and then dies on its first real
+  # request is invisible to `up --wait`. Hold, then re-read.
+  if ids="$(docker compose -f "$COMPOSE_FILE" ${PROFILES+"${PROFILES[@]}"} ps --quiet 2>/dev/null)" && [ -n "$ids" ]; then
+    echo "    watching for ${SMOKE_WATCH}s (a container that dies after healthy shows up here)"
+    sleep "$SMOKE_WATCH"
+    for id in $ids; do
+      read -r name status health <<<"$(docker inspect -f '{{.Name}} {{.State.Status}} {{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$id" | sed 's|^/||')"
+      case "$status/$health" in
+        running/unhealthy) bad "$name went unhealthy during the watch window" ;;
+        running/*) : ;;
+        *) bad "$name died during the watch window (state=$status)" ;;
+      esac
+    done
+    [ "$fail" -eq 0 ] && ok "everything still up after ${SMOKE_WATCH}s"
+  fi
 fi
 
 head_ "result"
