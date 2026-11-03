@@ -44,7 +44,7 @@ services:
 
   portainer:
     <<: *common
-    image: portainer/portainer-ce:2.45.2
+    image: portainer/portainer-ce:2.45.3
     command: -H unix:///var/run/docker.sock
     ports: ["${FB_PORT_PORTAINER:-9000}:9000"]
     volumes:
@@ -78,7 +78,7 @@ services:
 
   npm:
     <<: *common
-    image: jc21/nginx-proxy-manager:2.16.0
+    image: jc21/nginx-proxy-manager:latest
     ports: ["${FB_PORT_NPM:-80}:80", "${FB_PORT_NPM_TLS:-443}:443", "${FB_PORT_NPM_ADMIN:-81}:81"]
     volumes:
       - npm_data:/data
