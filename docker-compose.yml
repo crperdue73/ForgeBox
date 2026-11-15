@@ -60,7 +60,7 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 180s
+      start_period: 360s
 
   heimdall:
     <<: *common
@@ -74,7 +74,7 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 180s
+      start_period: 360s
 
   npm:
     <<: *common
@@ -89,7 +89,7 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 180s
+      start_period: 360s
 
   uptime-kuma:
     <<: *common
@@ -103,7 +103,7 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 180s
+      start_period: 360s
 
   watchtower:
     <<: *common
@@ -153,7 +153,7 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 180s
+      start_period: 360s
 
 # ============================================================================
 #  SECURITY  (--profile security)
@@ -175,7 +175,7 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 180s
+      start_period: 360s
 
   wireguard:
     <<: *common
@@ -193,7 +193,7 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 180s
+      start_period: 360s
 
   vaultwarden:
     <<: *common
@@ -207,7 +207,7 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 180s
+      start_period: 360s
 
   # Gluetun is gated behind its OWN opt-in profile (not `security`) because it
   # needs a host `/dev/net/tun` device node that unprivileged LXC/incus
@@ -234,7 +234,7 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 180s
+      start_period: 360s
 
 # ============================================================================
 #  DEVOPS — The DragonForge Core  (--profile devops)
@@ -256,7 +256,7 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 180s
+      start_period: 360s
 
   semaphore:
     <<: *common
@@ -280,7 +280,7 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 180s
+      start_period: 360s
 
   jenkins:
     <<: *common
@@ -295,7 +295,7 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 180s
+      start_period: 360s
 
   code-server:
     <<: *common
@@ -314,7 +314,7 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 180s
+      start_period: 360s
 
   guacamole:
     <<: *common
@@ -330,7 +330,7 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 180s
+      start_period: 360s
 
 # ============================================================================
 #  MEDIA  (--profile media)
@@ -348,7 +348,7 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 180s
+      start_period: 360s
 
   sonarr:
     <<: *common
@@ -363,7 +363,7 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 180s
+      start_period: 360s
 
   radarr:
     <<: *common
@@ -378,7 +378,7 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 180s
+      start_period: 360s
 
   prowlarr:
     <<: *common
@@ -392,7 +392,7 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 180s
+      start_period: 360s
 
   qbittorrent:
     <<: *common
@@ -412,7 +412,7 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 180s
+      start_period: 360s
 
   overseerr:
     <<: *common
@@ -426,7 +426,7 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 180s
+      start_period: 360s
 
 # ============================================================================
 #  PRODUCTIVITY  (--profile productivity)
@@ -477,7 +477,7 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 180s
+      start_period: 360s
 
   paperless_redis:
     <<: *common
@@ -531,7 +531,7 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 180s
+      start_period: 360s
 
   linkding:
     <<: *common
@@ -545,7 +545,7 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 180s
+      start_period: 360s
 
   n8n:
     <<: *common
@@ -565,7 +565,7 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 180s
+      start_period: 360s
 
 # ============================================================================
 #  FILES  (--profile files)
@@ -585,7 +585,7 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 180s
+      start_period: 360s
 
   syncthing:
     <<: *common
@@ -599,7 +599,7 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 180s
+      start_period: 360s
 
   chibisafe:
     <<: *common
@@ -616,7 +616,7 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 180s
+      start_period: 360s
 
 # ============================================================================
 #  AGGREGATE PROFILES  —  `--profile "*"` brings up everything optional

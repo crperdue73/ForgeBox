@@ -93,3 +93,16 @@ No change to `docker-compose.yml`. Product behaviour at `v1.0.0` is unchanged.
   published entries, the other distinct port numbers. It now reads
   `37 published entries across 37 distinct host port numbers` (full profile: 37
   and 35, because pihole 53 and syncthing 22000 are each stated for tcp and udp).
+
+### Fixed
+- **`start_period` is now 360s, up from 180s, and this one bit a real installer.**
+  Measured on a clean Debian 13 host (Nov 2026): `heimdall` and `npm` each
+  needed **270s** to pass their first health check. Deployed by hand, Docker
+  tolerated it and both went healthy at ~271s. Deployed with
+  `docker compose up --wait --wait-timeout`, it did not: the command gave up and
+  printed `container forgebox-heimdall-1 is unhealthy` on an install that
+  finished fully healthy a minute later. A first-time installer reads that line
+  as a broken install. 360s is the 270s observation plus a third of headroom.
+  `SMOKE_TIMEOUT` moved to match. Root cause inside `npm` is upstream, not ours:
+  an s6 `prepare` oneshot runs `chown -R` over the certbot package tree and
+  blocks `nginx` and `backend` until it returns.

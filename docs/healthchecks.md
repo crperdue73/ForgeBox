@@ -47,13 +47,28 @@ mounted `docker.sock`, so host PID visibility is not needed.
 - `paperless_redis` — the image ships no shell and no client worth probing with.
 - `paperless_db` — same; the app container's own readiness covers it.
 
-## start_period is 180s on purpose
+## start_period is 360s on purpose
 
 Linuxserver images generate TLS keys and finish a one-time install on first
 boot. A 60s `start_period` marked them unhealthy mid-install, which is a lie
-about a container doing exactly what it should. 180s is the observed ceiling
-for the slowest of them. On a slow or contended host even 180s can be tight —
-if a first boot reports unhealthy, check `docker logs` before assuming a bug.
+about a container doing exactly what it should.
+
+The number came down from a measurement, not a guess. On a clean Debian 13 host
+(Nov 2026) `heimdall` and `npm` both needed **270s** to pass their first
+health check, against a declared 180s window. Two consequences, and the second
+is the one that mattered:
+
+1. Docker tolerated it. When a health check fails inside `start_period`, the
+   container is not marked unhealthy, it just starts its retries again, so both
+   containers went healthy at ~271s anyway.
+2. `docker compose up --wait --wait-timeout` did not tolerate it. That command
+   gave up and printed `container forgebox-heimdall-1 is unhealthy` on an
+   install that finished fully healthy a minute later. A first-time installer
+   reads that line as a failed install.
+
+360s is now the declared window: the observed 270s ceiling plus a third of
+headroom for a slower host. If a first boot still reports unhealthy after
+360s, that is worth a `docker logs` look rather than an assumption.
 
 ## Known host constraint (not a compose bug)
 

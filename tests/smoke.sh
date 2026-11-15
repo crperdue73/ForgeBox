@@ -21,7 +21,7 @@
 #
 #  Env:
 #    COMPOSE_FILE   path to docker-compose.yml (default: repo root)
-#    SMOKE_TIMEOUT  seconds to wait for containers to become healthy (180)
+#    SMOKE_TIMEOUT  seconds to wait for containers to become healthy (360)
 #    SMOKE_WATCH    seconds to keep watching after everything reports healthy (90)
 #
 #  Requires: docker + compose v2. Fails loud, exit non-zero on any failure.
@@ -34,7 +34,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COMPOSE_FILE="${COMPOSE_FILE:-$REPO_ROOT/docker-compose.yml}"
-SMOKE_TIMEOUT="${SMOKE_TIMEOUT:-180}"
+SMOKE_TIMEOUT="${SMOKE_TIMEOUT:-360}"
 SMOKE_WATCH="${SMOKE_WATCH:-90}"
 DO_UP=0
 PROFILES=()
