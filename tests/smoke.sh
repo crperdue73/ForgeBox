@@ -49,9 +49,10 @@ while [ $# -gt 0 ]; do
   shift
 done
 
-pass=0; fail=0
+pass=0; fail=0; skip=0
 ok()   { printf '\033[1;32m  PASS\033[0m %s\n' "$*"; pass=$((pass+1)); }
 bad()  { printf '\033[1;31m  FAIL\033[0m %s\n' "$*"; fail=$((fail+1)); }
+skip_() { printf '\033[1;36m  SKIP\033[0m %s\n' "$*"; skip=$((skip+1)); }
 head_() { printf '\n\033[1;33m== %s ==\033[0m\n' "$*"; }
 
 # ---------------------------------------------------------------------------
@@ -244,13 +245,26 @@ head_ "3. no host port published twice"
 # Read the rendered config: `${FB_PORT_X}` is already substituted there, so a
 # collision created by an override in .env is caught, not just one in the
 # defaults. host_ports still handles the ${VAR} form for the fixture self-test.
-rendered_tmp="$(mktemp)"; trap 'rm -f "$rendered_tmp"' EXIT
+rendered_tmp="$(mktemp)"
+trap 'rm -f "$rendered_tmp"' EXIT
 printf '%s\n' "$rendered" > "$rendered_tmp"
+# `|| true`: upstream functions can return non-zero (host_ports exits 3 when it
+# finds no ports), and under `set -e` an bare assignment from a pipeline that
+# fails would kill the run before this check could report anything.
+distinct_ports="$(host_ports "$rendered_tmp" | sort -u | wc -l | tr -d ' ' || true)"
+[ -n "$distinct_ports" ] || distinct_ports=0
 dupes="$(host_ports "$rendered_tmp" | sort | uniq -d || true)"
-if [ -z "$dupes" ]; then
-  ok "no duplicate host ports ($(host_ports "$rendered_tmp" | sort -u | wc -l | tr -d ' ') distinct)"
+# A zero here is not a pass. Either the stack genuinely publishes nothing (it
+# does not: core alone publishes several, the full profile set dozens), or the
+# render we were handed carries no `ports:` blocks and this check is measuring
+# nothing while printing green. Say which, and fail on the second.
+if [ "$distinct_ports" -eq 0 ]; then
+  bad "port check saw 0 published ports: nothing to check, so this is not a pass"
+  echo "      the rendered config carries no ports; check that 'docker compose config' actually ran"
+elif [ -z "$dupes" ]; then
+  ok "no duplicate host ports ($distinct_ports distinct)"
 else
-  bad "duplicate host ports: $(echo $dupes | tr '\n' ' ')"
+  bad "duplicate host ports: $(echo $dupes | tr '\n' ' ') ($distinct_ports distinct published)"
   for d in $dupes; do
     port="${d%%:*}"
     # name the services that publish it, so a failure points at a file line
@@ -332,5 +346,7 @@ if [ "$DO_UP" -eq 1 ]; then
 fi
 
 head_ "result"
-printf 'passed=%d failed=%d\n' "$pass" "$fail"
+# Four counters, always. Nine and eight wear the same value if you only publish
+# the ones that fired, so the total executed is printed next to them.
+printf 'executed=%d passed=%d failed=%d skipped=%d\n' "$((pass+fail+skip))" "$pass" "$fail" "$skip"
 [ "$fail" -eq 0 ] && { printf '\033[1;32mSMOKE OK\033[0m\n'; exit 0; } || { printf '\033[1;31mSMOKE FAILED\033[0m\n'; exit 1; }

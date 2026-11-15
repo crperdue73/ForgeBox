@@ -76,3 +76,14 @@ here was made from such a host.
   line, and never writes a `.env` of its own.
 
 No change to `docker-compose.yml`. Product behaviour at `v1.0.0` is unchanged.
+
+- **Check 3 (duplicate host ports) could pass on nothing.** It reported
+  `no duplicate host ports (0 distinct)` and called that a pass. Zero published
+  ports on this stack is impossible: a real `docker compose config` render shows
+  37 distinct ports. A zero now fails the check and says why. The count is printed
+  next to the verdict on every run. Also fixed: under `set -e` the check could kill
+  the whole run mid-way with no verdict and no output when the port scan returned
+  non-zero.
+- **The result line now prints four counters** (`executed`, `passed`, `failed`,
+  `skipped`). Publishing only the two that moved let 8 and 9 look like the same
+  number.
