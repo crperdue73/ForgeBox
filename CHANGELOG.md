@@ -87,3 +87,9 @@ No change to `docker-compose.yml`. Product behaviour at `v1.0.0` is unchanged.
 - **The result line now prints four counters** (`executed`, `passed`, `failed`,
   `skipped`). Publishing only the two that moved let 8 and 9 look like the same
   number.
+
+- **Check 3 now names its units.** It printed one bare count, so two correct
+  reporters publishing 37 and 35 looked like a disagreement: one was counting
+  published entries, the other distinct port numbers. It now reads
+  `37 published entries across 37 distinct host port numbers` (full profile: 37
+  and 35, because pihole 53 and syncthing 22000 are each stated for tcp and udp).

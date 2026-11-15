@@ -254,6 +254,8 @@ printf '%s\n' "$rendered" > "$rendered_tmp"
 distinct_ports="$(host_ports "$rendered_tmp" | sort -u | wc -l | tr -d ' ' || true)"
 [ -n "$distinct_ports" ] || distinct_ports=0
 dupes="$(host_ports "$rendered_tmp" | sort | uniq -d || true)"
+total_entries="$(host_ports "$rendered_tmp" | wc -l | tr -d ' ' || true)"
+[ -n "$total_entries" ] || total_entries=0
 # A zero here is not a pass. Either the stack genuinely publishes nothing (it
 # does not: core alone publishes several, the full profile set dozens), or the
 # render we were handed carries no `ports:` blocks and this check is measuring
@@ -262,7 +264,10 @@ if [ "$distinct_ports" -eq 0 ]; then
   bad "port check saw 0 published ports: nothing to check, so this is not a pass"
   echo "      the rendered config carries no ports; check that 'docker compose config' actually ran"
 elif [ -z "$dupes" ]; then
-  ok "no duplicate host ports ($distinct_ports distinct)"
+  # Two numbers on purpose: the same host port stated for tcp and for udp is
+  # legal and counts twice in the entry tally (pihole 53, syncthing 22000), so a
+  # bare count invites "which number is right" instead of an answer. Say both.
+  ok "no duplicate host ports ($total_entries published entries across $distinct_ports distinct host port numbers)"
 else
   bad "duplicate host ports: $(echo $dupes | tr '\n' ' ') ($distinct_ports distinct published)"
   for d in $dupes; do
