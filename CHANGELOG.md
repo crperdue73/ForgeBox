@@ -1,0 +1,59 @@
+# Changelog
+
+All notable changes to ForgeBox are documented here.
+Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
+versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [1.0.0] — 2026-11-15
+
+First tagged release. Cut from `main` at commit `2af2f43` (2026-11-02) with no
+functional changes: the tag exists so deployment testing has something fixed to
+test against.
+
+### What ForgeBox 1.0.0 is
+
+One `docker-compose.yml` that stands up 31 services across 6 optional profiles
+plus core. Profiles let a 4 GB mini-PC run the core and a bigger box run all of it:
+
+| Profile | Services |
+|---|---|
+| *(core, no profile)* | Portainer, Heimdall, Nginx Proxy Manager, Uptime Kuma, Watchtower, Glances |
+| `security` | Pi-hole, WireGuard, Vaultwarden |
+| `vpn` | Gluetun *(opt-in, needs host `/dev/net/tun`)* |
+| `devops` | Gitea, Semaphore, Jenkins, code-server, Guacamole |
+| `media` | Jellyfin, Sonarr, Radarr, Prowlarr, qBittorrent, Overseerr |
+| `productivity` | Home Assistant, Paperless-ngx, Vikunja, Linkding, n8n |
+| `files` | Nextcloud, Syncthing, Chibisafe |
+
+### Changes since first public push (2026-10-15)
+
+- **Portainer pinned to `2.45.3`** — matches the data volume already on the build
+  box instead of predicting a newer one.
+- **Nginx Proxy Manager unpinned to `latest`** — `2.16.0` came off the tag: the
+  container boots, the `:81` healthcheck goes green, and the admin init path never
+  completes. A healthcheck-green proxy that answers nothing. Known issue, tracked
+  in the repo issues rather than carried as a pending task.
+- **Glances pinned to `4.5.8-full`**, Gluetun to `v3.41.3`, WireGuard to
+  `1.0.20260223`, Prowlarr to `2.6.5`, qBittorrent to `5.3.0`, Syncthing to `2.1.6`.
+- **Docs**: troubleshooting notes for LXC hosts (no `/dev/net/tun`, so no Gluetun),
+  healthcheck reference, service + port catalog, ADR log in `docs/decisions.md`.
+- **`tests/smoke.sh`** — boots the stack and checks that every declared service
+  reaches running state with its healthcheck passing.
+
+### Known limitations at release
+
+- `--profile "*"` includes `vpn`; on a host without `/dev/net/tun` that run brings
+  up everything else and errors on Gluetun alone.
+- Nginx Proxy Manager's `latest` roll is described above; if a future tag breaks
+  init again, pin the last known-good digest.
+- Verified on the Debian 12 / Docker Compose v2 build box. Not yet tested on
+  DragonForge Linux itself, on ARM, or on Podman.
+- No automated CI. `tests/smoke.sh` is run by hand.
+
+### Verification honesty
+
+The compose file was validated against a live Docker daemon on the build host.
+`tests/smoke.sh` cannot run on a host without the Compose v2 plugin, and no claim
+here was made from such a host.
+
+[1.0.0]: https://github.com/crperdue73/ForgeBox/releases/tag/v1.0.0

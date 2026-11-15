@@ -9,7 +9,7 @@
 #                 (* = every profile, `vpn`/gluetun included — see note below)
 #
 #  Docs: docs/   ·  Branding: branding/BRAND.md
-#  Maintained by CR Perdue Technologies. Project: ForgeBox.
+#  ForgeBox v1.0.0 · Maintained by CR Perdue Technologies.
 # ============================================================================
 
 # Project name defaults to this, but can be overridden per instance:

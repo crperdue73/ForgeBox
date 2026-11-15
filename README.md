@@ -5,6 +5,8 @@
 **Your enterprise homelab, unleashed.**
 Turn that unused PC into a powerful, professional-grade datacenter with a single command.
 
+**Current release: [v1.0.0](https://github.com/crperdue73/ForgeBox/releases/tag/v1.0.0)** — [changelog](CHANGELOG.md)
+
 > That unused PC in the corner? It's a datacenter. You just haven't run the command yet.
 
 ## What is ForgeBox?
@@ -77,6 +79,7 @@ host without tun that run brings up everything else and then errors on Gluetun a
 
 ## Documentation
 
+- [`CHANGELOG.md`](CHANGELOG.md) — what changed, release by release
 - [`docs/install.md`](docs/install.md) — full install guide
 - [`docs/quick-start.md`](docs/quick-start.md) — first-run walkthrough
 - [`docs/services.md`](docs/services.md) — the container catalog + port table
