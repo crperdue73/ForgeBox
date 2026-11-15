@@ -172,16 +172,32 @@ command -v docker >/dev/null 2>&1 || { echo "docker not found" >&2; exit 1; }
 
 head_ "1. compose config parses"
 [ -f "$COMPOSE_FILE" ] || { bad "compose file missing: $COMPOSE_FILE"; exit 1; }
-if rendered="$(docker compose -f "$COMPOSE_FILE" ${PROFILES+"${PROFILES[@]}"} config 2>/dev/null)"; then
-  ok "docker compose config -> valid (${#rendered} bytes)"
+
+# Compose requires .env for the required variables in the core profile, but a
+# stranger who has just cloned the repo has not made one yet, and this is the
+# moment they are most likely to run the test. If there is no .env, parse
+# against the template explicitly instead of failing on a missing value: the
+# quick-start already tells them to copy it. Never write a .env file here.
+COMPOSE_ENV_ARGS=()
+ENV_NOTE=""
+if [ ! -f "$REPO_ROOT/.env" ] && [ -f "$REPO_ROOT/.env.example" ]; then
+  COMPOSE_ENV_ARGS=(--env-file "$REPO_ROOT/.env.example")
+  ENV_NOTE=" (no .env found: parsing against .env.example)"
+fi
+if rendered="$(docker compose -f "$COMPOSE_FILE" ${COMPOSE_ENV_ARGS+"${COMPOSE_ENV_ARGS[@]}"} ${PROFILES+"${PROFILES[@]}"} config 2>/dev/null)"; then
+  ok "docker compose config -> valid (${#rendered} bytes)${ENV_NOTE}"
 else
-  bad "docker compose config failed"; docker compose -f "$COMPOSE_FILE" config || true; exit 1
+  bad "docker compose config failed${ENV_NOTE}"; docker compose -f "$COMPOSE_FILE" ${COMPOSE_ENV_ARGS+"${COMPOSE_ENV_ARGS[@]}"} config || true; exit 1
 fi
 
 head_ "2. expected services present"
 # Core is always expected; profile services are expected only when their
 # profile is selected. Keep this list in sync with docker-compose.yml.
-CORE="portainer heimdall npm uptime-kuma watchtower glances"
+# watchtower is NOT core: it lives in the `autoupdate` profile on purpose (see
+# the comment in docker-compose.yml). It appears here only under its own
+# profile, so listing it in both places made a core-only run expect a service
+# compose correctly refuses to define.
+CORE="portainer heimdall npm uptime-kuma glances"
 declare -A EXTRA=(
   [security]="pihole wireguard vaultwarden"
   [vpn]="gluetun"
@@ -249,12 +265,26 @@ else
 fi
 
 head_ "4. image tags are pinned"
+# `:latest` is a defect by default, but one pin is deliberate and argued for in
+# the compose comments: Nginx Proxy Manager tracks `latest` because 2.16.0 booted
+# with a green :81 healthcheck and never finished admin init. Exemptions are
+# listed here explicitly and reported out loud, so an accidental new `:latest`
+# still fails while a decision this file already explains does not.
+LATEST_ALLOWED="jc21/nginx-proxy-manager:latest"
 # grep exits 1 on no-match, so capture then test the string (not the exit code)
-pinned_bad="$(grep -nE '^[[:space:]]*image:[[:space:]]*[^[:space:]]+:latest' "$COMPOSE_FILE" || true)"
+latest_all="$(grep -oE '^[[:space:]]*image:[[:space:]]*[^[:space:]]+:[^[:space:]]*latest[^[:space:]]*' "$COMPOSE_FILE" | sed -E 's/.*image:[[:space:]]*//' || true)"
+pinned_bad=""
+for img in $latest_all; do
+  case " $LATEST_ALLOWED " in
+    *" $img "*) continue ;;
+  esac
+  pinned_bad+="$img "
+done
 if [ -n "$pinned_bad" ]; then
-  bad "unpinned \`:latest\` images: $(echo "$pinned_bad" | sed -E 's/.*image:[[:space:]]*//' | tr '\n' ' ')"
+  bad "unpinned \`:latest\` images: $pinned_bad"
 else
-  ok "no \`:latest\` image tags ($(grep -cE '^[[:space:]]*image:' "$COMPOSE_FILE") images)"
+  ok "no unintended \`:latest\` image tags ($(grep -cE '^[[:space:]]*image:' "$COMPOSE_FILE") images)"
+  [ -n "$latest_all" ] && echo "    (deliberate: $LATEST_ALLOWED, see docker-compose.yml)"
 fi
 
 if [ "$DO_UP" -eq 1 ]; then

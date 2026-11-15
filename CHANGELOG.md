@@ -57,3 +57,22 @@ The compose file was validated against a live Docker daemon on the build host.
 here was made from such a host.
 
 [1.0.0]: https://github.com/crperdue73/ForgeBox/releases/tag/v1.0.0
+
+## [Unreleased]
+
+### Fixed (found by deployment testing, 2026-11-15)
+
+- **`tests/smoke.sh` expected `watchtower` in core.** It is defined only under the
+  `autoupdate` profile, deliberately, so a core-only run correctly refused to
+  create it and the test called that a missing service. Watchtower is now
+  expected only when its profile is selected.
+- **`tests/smoke.sh` had a blanket no-`:latest` rule** that contradicted the
+  documented Nginx Proxy Manager pin. The deliberate exemption is now listed
+  explicitly and printed when it applies, so an accidental new `:latest` still
+  fails while the argued-for one does not.
+- **`tests/smoke.sh` failed on a fresh clone with no `.env`** (`PIHOLE_PASSWORD is
+  missing a value`) at the exact moment a stranger is most likely to run it. It
+  now parses against `.env.example` when no `.env` exists, says so in the PASS
+  line, and never writes a `.env` of its own.
+
+No change to `docker-compose.yml`. Product behaviour at `v1.0.0` is unchanged.
