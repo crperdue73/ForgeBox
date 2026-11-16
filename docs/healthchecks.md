@@ -79,7 +79,9 @@ clean bench (2026-11-16), with the number and the command that produced it:
   `FailingStreak=9`, and **624s into its first boot**.
 - `docker top forgebox-npm-1 | grep -c "chown -R"` -> `1` (still running).
 - The process: `chown -R 1000:1000 /opt/certbot/lib/python3.13/site-packages`.
-- `du -s` on that tree: **92,307 KB, 9,303 files**, single filesystem.
+- `du -s` on that tree: two independent samples, `92,307 KB / 9,303 files` and
+  `91 MB / 8,197 files`. Same order, different counters (different measurement,
+  same tree). The point is the size, not the exact digit.
 
 So it is not a slow boot with a duration, it is a **filesystem walk with no
 fixed duration**. That is the whole distinction. 270s was one sample of an
@@ -96,8 +98,35 @@ lose on a slow disk or a bigger tree.
   per-service exclusion, so `tests/smoke.sh` starts the stack detached, then
   runs a second `up --wait` naming every service **except** npm.
 - `docker compose ps` will show npm as `starting` for however long init actually
-  takes, then `healthy` once nginx answers on :81. That is the truthful display.
+  takes.
 - Second and later boots skip the chown and are quick.
+
+**What the health status does NOT promise, and this is a correction.** An
+earlier draft of this file said npm "flips to healthy once nginx answers on
+:81." That is not something this project can promise, and a bench observation
+proves it:
+
+- npm ran with `start_period: 360s` (the previous value) and reached
+  `FailingStreak: 18` against `interval: 30s`, i.e. roughly nine minutes of
+  failing probes, with the container still `health=unhealthy`.
+- Whether that was (i) init still chowning, so nginx was genuinely not up yet,
+  or (ii) init finished and nginx still not answering on `:81`, **was not
+  established.** Option (ii) would be the same class of fault as the 2.16.0
+  proxy-up-with-no-admin-behind-it regression.
+
+The distinction matters and the project does not get to assume the flattering
+one. So:
+
+- A `start_period` does not merely risk being too short. `FailingStreak`
+  counts probes after the window ends, so a container can sit at
+  `unhealthy` indefinitely while its init is still legitimately running. That
+  is the strongest argument for not putting the gate on a clock at all.
+- `starting` is not a promise that the next state is `healthy`. It means "we do
+  not know yet", which is the truth.
+- Anyone seeing npm `unhealthy` on a first boot should check
+  `docker top <container> | grep chown` before concluding the container is
+  broken. If chown is still running, it is init. If chown is gone and `:81`
+  still refuses, that is a real defect and should be reported as one.
 
 **The honest limit, stated rather than hidden:** a stranger's very first
 `up --wait`, run by hand and not through `smoke.sh`, can still print npm as

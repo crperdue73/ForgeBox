@@ -6,6 +6,18 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed (docs)
+- **Removed a claim about npm's health status that was never established.** The
+  healthchecks doc said npm "flips to healthy once nginx answers on :81". A
+  bench run at the previous `start_period: 360s` reached `FailingStreak: 18`
+  against a 30s interval, roughly nine minutes, still `unhealthy`. Whether that
+  was init still running or init finished with `:81` still refusing was not
+  determined, and those two are very different defects. `starting` now means
+  "we do not know yet", with the chown check documented as the way to tell the
+  two apart.
+
+
+
 ### Changed
 - **npm is out of the `--wait` gate, on purpose, as branch (b).** Its first boot
   runs an s6 `prepare` oneshot (`chown -R` over the certbot site-packages tree,
