@@ -87,10 +87,14 @@ services:
     # No meaningful `start_period` and no fixed window, and here is why that is a
     # decision rather than an omission.
     #
-    # FIRST BOOT ONLY: an s6 prepare oneshot runs
+    # An s6 prepare oneshot runs
     #   chown -R 1000:1000 /opt/certbot/lib/python3.13/site-packages
     # over 92,307 KB / 9,303 files. It is an unbounded filesystem walk, not a slow
-    # fixed startup. Independent sampling observed it still running at 624s, at
+    # fixed startup. How often it runs is NOT established: it was observed on a
+    # fresh volume AND on a container whose persistent volumes already existed
+    # and had been chowned by a previous run. So do not assume only the first
+    # start pays this. See docs/healthchecks.md.
+    # Independent sampling observed it still running at 624s, at
     # 15+ minutes, and at 17+ minutes, with `write_bytes` advancing at an
     # unstable rate (17 MB in 46s, then 8 MB in 103s, then 8 MB in 130s), PID in
     # state `D` (disk wait, not hung). Those are lower bounds. **This project has
@@ -105,9 +109,10 @@ services:
     # nginx answers. So the flag is a lie about a working install, which is
     # exactly what a first-time installer must not see.
     #
-    # Second and later boots skip the chown entirely: `docker compose restart npm`
-    # was healthy in well under a minute with no chown. That is why a populated
-    # volume makes any `start_period` look generous, and a fresh volume does not.
+    # One `docker compose restart npm` came back quickly with no chown, which is
+    # where an earlier "first boot only" note came from; a later per-start
+    # observation contradicts it, so neither claim ships. The distinguishing
+    # experiment is in docs/healthchecks.md.
     #
     # So `docker compose up --wait` is not gated on this service (see
     # tests/smoke.sh), which is the part that matters for the quick start. The

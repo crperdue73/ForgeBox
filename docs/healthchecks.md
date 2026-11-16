@@ -79,11 +79,12 @@ get repeated.
 
 ### The observation
 
-From a **fresh volume**, full core stack, on a clean Debian 13 host (Nov 2026),
-sampled while live:
+Full core stack, on a clean Debian 13 host (Nov 2026), sampled live. The first
+observations came from a fresh volume; see the frequency section for why that
+distinction turned out not to be load-bearing:
 
 - `chown -R 1000:1000 /opt/certbot/lib/python3.13/site-packages`, run by the
-  image's s6 `prepare` oneshot on first boot.
+  image's s6 `prepare` oneshot (frequency not established, see below).
 - That tree is **92,307 KB / 9,303 files**.
 - The chown was still running when sampling stopped at **624s**, at **15+
   minutes**, and at **17+ minutes**. `write_bytes` advanced at an unstable rate:
@@ -114,22 +115,47 @@ reports healthy again once nginx answers, with no restart. So the red flag is a
 defect: not a crash, not a hang, a display that tells a first-time installer their
 install failed when it did not.
 
-### First boot only
+### How often does it run? Not established.
 
-- `docker compose restart npm` (volume kept): no chown runs and it is healthy
-  quickly.
-- `docker compose down -v && docker compose up -d npm` (fresh volume): the chown
-  runs again, unbounded.
+An earlier draft of this file said **"first boot only,"** resting on a
+`docker compose restart npm` that came back healthy quickly with no chown. That
+story is now **withdrawn as unproven**, because a later observation contradicts
+it:
 
-This is why the problem is invisible on a machine where the stack has been
-deployed before: the volume is already populated, the chown is skipped, and any
-`start_period` looks generous. **Every honest install test starts from a fresh
-volume, because that is what a stranger gets.**
+- A container created at `02:56:58Z` (`created` 02:56:58.417, `started`
+  02:56:58.753, `health=starting`, `fails=0`, `restarts=0`) had chown PID 15279
+  running and `:81` **refusing** at 2m19s elapsed.
+- Both of its mounts, `forgebox_npm_data` and `forgebox_npm_letsencrypt`, are
+  **persistent Docker named volumes that were not recreated.** So this run was
+  walking a tree a previous run had already walked, and was slow anyway.
+
+If the cost were purely first-touch of the volume, reusing an already-chowned
+volume would be fast. It was not. That points at **per-container-start** cost
+rather than per-volume first touch, i.e. the s6 oneshot runs `chown -R` on every
+start regardless of whether the data is already owned.
+
+**That is not asserted as fact here.** It is one observation of one container
+with no finished run, and the two explanations have not been separated by an
+experiment. What follows from it is narrower and does not depend on which is
+true:
+
+- The docs must not claim "first boot only." It is not established.
+- A stranger's *second* start may be just as slow as the first. Anyone planning
+  restarts should sample `docker top <container> | grep chown` rather than
+  assume a quick one.
+- The distinguishing experiment, when someone has an idle box: `docker compose
+  restart npm` with the volume untouched, and watch whether chown appears. If it
+  does, the cost is per start. If it never does, something about volume state
+  matters and the original story may hold.
+
+Either way branch **(c)** is unaffected: if the walk can happen on any start,
+then no `start_period` can be correct, and the argument is stronger rather than
+weaker.
 
 ### What ForgeBox does instead
 
-Branch **(c)**: npm is out of the `--wait` gate, and its first-boot chown is
-documented as upstream.
+Branch **(c)**: npm is out of the `--wait` gate, and the chown is documented as
+upstream.
 
 - npm declares no meaningful window (`start_period: 30s`); the number is not
   load-bearing and is not presented as a ceiling.
@@ -138,7 +164,7 @@ documented as upstream.
   `up --wait` naming every service **except** npm.
 - npm's healthcheck is unchanged and still real, so `docker compose ps` shows
   `starting` for exactly as long as init takes.
-- Checklist for anyone who sees npm red on a first boot: `docker top <container>
+- Checklist for anyone who sees npm red at any start: `docker top <container>
   | grep chown`. **Chown present = init, wait. Chown gone and `:81` still
   refusing = a real defect, report it.**
 

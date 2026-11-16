@@ -12,8 +12,9 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   9,303 files) whose duration is not bounded by anything this project controls.
   Observed still running at 624s, 15+ minutes and 17+ minutes with an unstable
   `write_bytes` rate; **no completion time is quoted, because none was witnessed
-  end to end**. On a populated volume the chown is skipped and it is healthy
-  quickly. A
+  end to end**, and **no frequency is claimed either**: it was seen on a fresh
+  volume and again on a container whose persistent volumes already existed, so
+  "first boot only" is withdrawn as unproven. A
   `start_period` is a guess about a duration, and there is no duration here to
   guess, so `360s` was wrong and a larger number would be the same mistake with
   more digits. `smoke.sh` now brings the stack up detached, then waits on every
