@@ -86,9 +86,10 @@ services:
     profiles: []
     # No `start_period` and no fixed window: this container's FIRST boot runs an
     # s6 prepare oneshot (`chown -R` over the certbot site-packages tree, ~93 MB
-    # / ~9.3k files) whose duration is not bounded by anything we control. It ran
-    # >624s on a clean bench. Any number here is a guess about an unbounded
-    # operation, so the honest thing is not to guess. `docker compose up --wait`
+    # / ~9.3k files) whose duration is not bounded by anything we control. It was
+    # still running when sampling stopped at 624s, and on a later run at 15+
+    # minutes. That is a lower bound, not a duration, and it is the reason no
+    # number here is a guess worth making. `docker compose up --wait`
     # does not gate on this service (see tests/smoke.sh); the healthcheck is
     # still real, so `docker compose ps` shows `starting` for as long as init
     # actually takes, then flips to `healthy` once nginx answers on :81.

@@ -22,7 +22,8 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **npm is out of the `--wait` gate, on purpose, as branch (b).** Its first boot
   runs an s6 `prepare` oneshot (`chown -R` over the certbot site-packages tree,
   ~92 MB / 9.3k files) whose duration is not bounded by anything the project
-  controls; measured still running **624s** after start on a clean bench. A
+  controls; still running when sampling stopped at **624s**, and at **15+
+  minutes** on a later run. Both are lower bounds, not durations. A
   `start_period` is a guess about a duration, and there is no duration here to
   guess, so `360s` was wrong and `900s` would be the same mistake with a bigger
   number. npm no longer gates the quick start: `smoke.sh` brings the stack up

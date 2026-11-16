@@ -76,7 +76,11 @@ npm does not belong in that table, and 360s was wrong for it. Corrected on a
 clean bench (2026-11-16), with the number and the command that produced it:
 
 - npm `StartedAt` `02:34:04Z`; at `02:44:28Z` it was still `unhealthy`,
-  `FailingStreak=9`, and **624s into its first boot**.
+  `FailingStreak=9`, and **624s into its first boot with chown still running.
+  That is a lower bound, not a duration.** A later run was still chowning at
+  **15 minutes and counting**, which is the number that matters: the walk did
+  not finish in 624s, so 624 is not a completion time and must not be read as
+  one.
 - `docker top forgebox-npm-1 | grep -c "chown -R"` -> `1` (still running).
 - The process: `chown -R 1000:1000 /opt/certbot/lib/python3.13/site-packages`.
 - `du -s` on that tree: two independent samples, `92,307 KB / 9,303 files` and
