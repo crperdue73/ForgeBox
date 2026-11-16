@@ -72,80 +72,80 @@ assumption.
 
 ## npm is not on a clock, and is not gated
 
-npm does not belong in that table, and 360s was wrong for it. Corrected on a
-clean bench (2026-11-16), with the number and the command that produced it:
+npm does not belong in the table above, and `start_period` was the wrong tool for
+it. This section is the corrected account; the number is measured, the command
+that produced it is given, and the earlier guesses are recorded so they do not
+get repeated.
 
-- npm `StartedAt` `02:34:04Z`; at `02:44:28Z` it was still `unhealthy`,
-  `FailingStreak=9`, and **624s into its first boot with chown still running.
-  That is a lower bound, not a duration.** A later run was still chowning at
-  **15 minutes and counting**, which is the number that matters: the walk did
-  not finish in 624s, so 624 is not a completion time and must not be read as
-  one.
-- `docker top forgebox-npm-1 | grep -c "chown -R"` -> `1` (still running).
-- The process: `chown -R 1000:1000 /opt/certbot/lib/python3.13/site-packages`.
-- `du -s` on that tree: two independent samples, `92,307 KB / 9,303 files` and
-  `91 MB / 8,197 files`. Same order, different counters (different measurement,
-  same tree). The point is the size, not the exact digit.
+### The measurement
 
-So it is not a slow boot with a duration, it is a **filesystem walk with no
-fixed duration**. That is the whole distinction. 270s was one sample of an
-unbounded operation, and presenting it as a ceiling was a mistake worth writing
-down. You cannot pick a `start_period` that covers work whose length you do not
-control; 900s would be the same guess with a bigger number, and it would still
-lose on a slow disk or a bigger tree.
+On a clean Debian 13 host (Nov 2026), from a **fresh volume**, full core stack:
 
-**What ForgeBox does instead (decided 2026-11-16):**
+- `docker inspect --format "{{.State.StartedAt}}" forgebox-npm-1` -> `2026-11-16T02:34:04Z`
+- first `exit=0` in `docker inspect --format "{{json .State.Health.Log}}"` -> `02:54:36Z`
+- **time to first healthy: 19m32s (1172s)**
 
-- npm declares no meaningful window (`start_period: 30s`); its healthcheck
-  stays real and keeps running.
-- `docker compose up --wait` does not gate on npm. `up --wait` has no
-  per-service exclusion, so `tests/smoke.sh` starts the stack detached, then
-  runs a second `up --wait` naming every service **except** npm.
-- `docker compose ps` will show npm as `starting` for however long init actually
-  takes.
-- Second and later boots skip the chown and are quick.
+The mechanism, from inside the container:
 
-**What the health status does NOT promise, and this is a correction.** An
-earlier draft of this file said npm "flips to healthy once nginx answers on
-:81." That is not something this project can promise, and a bench observation
-proves it:
+- `chown -R 1000:1000 /opt/certbot/lib/python3.13/site-packages`, run by the
+  image's s6 `prepare` oneshot on first boot.
+- That tree is **92,307 KB / 9,303 files**.
+- It is a **filesystem walk with no fixed duration**, not a slow startup with a
+  predictable length. Sampling observed it still running at 624s, still running
+  at 15+ minutes, `write_bytes` advancing at an unstable rate (17 MB in 46s, then
+  8 MB in 103s), PID in state `D`. Those are lower bounds; the 1172s figure is
+  the one completed run.
 
-- npm ran with `start_period: 360s` (the previous value; observed as
-  `StartPeriod: 360000000000` ns, i.e. `6m0s`, on the live container) and
-  reached `FailingStreak: 18` against `interval: 30s`, i.e. roughly nine minutes
-  of failing probes, with the container still `health=unhealthy`.
-- **Which value a given box is running is a separate question from what the file
-  says now.** The container in that observation predates the `start_period: 30s`
-  change, so it was running 360s. Both readings have been quoted at each other
-  in that window and it is the same namespace fault as measuring a port count
-  and reporting an entry count: the file is one object, the running container is
-  another, and the second one is what a probe actually touches.
-- Later resolved as **(i)** by the chown test: at 15:10 elapsed the chown was
-  still present, `write_bytes` advancing, PID in `D`. So `:81` refusing during
-  init is expected and is not evidence against the image. Option (ii) would have
-  been the same class of fault as the 2.16.0
-  proxy-up-with-no-admin-behind-it regression.
+### What a too-small `start_period` actually does
 
-The distinction mattered enough to measure rather than argue: it is the
-difference between a documentation fix and a shipped regression. So:
+This is the part worth reading carefully, because the obvious guess is wrong.
 
-- A `start_period` does not merely risk being too short. `FailingStreak`
-  counts probes after the window ends, so a container can sit at
-  `unhealthy` indefinitely while its init is still legitimately running. That
-  is the strongest argument for not putting the gate on a clock at all.
-- `starting` is not a promise that the next state is `healthy`. It means "we do
-  not know yet", which is the truth.
-- Anyone seeing npm `unhealthy` on a first boot should check
-  `docker top <container> | grep chown` before concluding the container is
-  broken. If chown is still running, it is init. If chown is gone and `:81`
-  still refuses, that is a real defect and should be reported as one.
+Once `start_period` expires, `retries: 3` at `interval: 30s` marks the container
+`unhealthy` within 90 seconds, and it **stays** red for the rest of init.
+`FailingStreak` was observed climbing `0 -> 4 -> 9 -> 22`.
 
-**The honest limit, stated rather than hidden:** a stranger's very first
-`up --wait`, run by hand and not through `smoke.sh`, can still print npm as
-unhealthy on a first boot, because flags on the CLI, not just in the file,
-decide that. The remedy is upstream (npm's s6 `prepare` oneshot should signal
-readiness instead of the healthcheck guessing on a clock), and this project's
-part is to stop guessing.
+But the container is **not broken and does not need attention**: at 02:54:36 the
+health probe returned `exit=0` on its own and Docker reported `healthy` again with
+no restart. So the red flag is a **lie about a healthy install that has not
+finished initialising**. That is the defect: not a crash, not a hang, a display
+that tells a first-time installer their install failed when it did not.
+
+### First boot only, measured in both directions
+
+- `docker compose restart npm` (volume kept): started 02:56:28, **healthy by
+  02:57, no chown runs.**
+- `docker compose down -v && docker compose up -d npm` (fresh volume): chown runs
+  again, ~20 minutes.
+
+This is why the problem is invisible on a machine where the stack has been
+deployed before: the volume is already populated, the chown is skipped, and any
+`start_period` looks generous. **Every honest install test starts from a fresh
+volume, because that is what a stranger gets.**
+
+### What ForgeBox does instead
+
+Branch **(c)**: npm is out of the `--wait` gate, and its first-boot chown is
+documented as upstream.
+
+- npm declares no meaningful window (`start_period: 30s`); the number is not
+  load-bearing and is not presented as a ceiling.
+- `docker compose up --wait` does not gate on npm. `up --wait` has no per-service
+  exclusion, so `tests/smoke.sh` starts the stack detached, then runs a second
+  `up --wait` naming every service **except** npm.
+- npm's healthcheck is unchanged and still real, so `docker compose ps` shows
+  `starting` for exactly as long as init takes.
+- Checklist for anyone who sees npm red on a first boot: `docker top <container>
+  | grep chown`. **Chown present = init, wait. Chown gone and `:81` still
+  refusing = a real defect, report it.**
+
+Branch **(a)**, pinning `start_period` above 1172s, was considered and rejected
+for npm: it is still a number guessed about an unbounded operation, and a slower
+disk or a larger tree beats it. Picking a bigger number each time someone reports
+this is how a project ends up at 180 -> 360 -> 1800 and still failing.
+
+Branch **(b)**, having the image signal readiness from its s6 oneshot, is the
+real fix and it belongs upstream. It is out of scope for this project and is
+tracked here rather than quietly forgotten.
 
 ## Known host constraint (not a compose bug)
 

@@ -6,6 +6,29 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+- **npm is out of the `--wait` gate, on purpose.** Its first boot runs an s6
+  `prepare` oneshot (`chown -R` over the certbot site-packages tree, 92,307 KB /
+  9,303 files) whose duration is not bounded by anything this project controls.
+  Measured time to first healthy from a fresh volume: **19m32s (1172s)**.
+  Measured on a populated volume: healthy in under a minute, no chown. A
+  `start_period` is a guess about a duration, and there is no duration here to
+  guess, so `360s` was wrong and a larger number would be the same mistake with
+  more digits. `smoke.sh` now brings the stack up detached, then waits on every
+  service except npm, by name. npm's healthcheck is unchanged and still real, so
+  `docker compose ps` shows `starting` for exactly as long as init takes. npm's
+  `start_period` drops to 30s because it is no longer load-bearing.
+
+### Documented
+- What a too-small `start_period` actually does to npm: it marks the container
+  `unhealthy` (FailingStreak 0 -> 4 -> 9 -> 22) and keeps it red for the rest of
+  init, **while the container is healthy and recovers with no restart** once
+  `:81` answers. The flag lies about a working install. Recorded with the
+  namespace-check that distinguishes init from breakage:
+  `docker top <container> | grep chown`.
+
+
+
 ### Fixed (docs)
 - **Removed a claim about npm's health status that was never established.** The
   healthchecks doc said npm "flips to healthy once nginx answers on :81". A

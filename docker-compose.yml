@@ -84,23 +84,36 @@ services:
       - npm_data:/data
       - npm_letsencrypt:/etc/letsencrypt
     profiles: []
-    # No meaningful `start_period` and no fixed window: this container's FIRST
-    # boot runs an s6 prepare oneshot (`chown -R` over the certbot site-packages
-    # tree, 91 MB / 8197 files) whose duration is not bounded by anything we
-    # control. It outlived every sampling window: still running at 624s, still
-    # running at 15+ minutes, write_bytes advancing ~1 MB per 2 min, PID in D
-    # (disk wait, not hung). Those are lower bounds, not durations, and the rate
-    # is not stable enough to extrapolate one. So no number here would be worth
-    # guessing. `docker compose up --wait` does not gate on this service (see
-    # tests/smoke.sh). The healthcheck stays real, and `docker compose ps` will
-    # honestly show `starting` for as long as init takes. It does NOT promise
-    # `healthy` afterwards: a container whose init overruns start_period keeps
-    # incrementing FailingStreak and wears `unhealthy` for the whole init, which
-    # is exactly what this one did. To tell "still initialising" from "actually
-    # broken", ask the layer that knows:
+    # No meaningful `start_period` and no fixed window, and here is why that is a
+    # decision rather than an omission.
+    #
+    # FIRST BOOT ONLY: an s6 prepare oneshot runs
+    #   chown -R 1000:1000 /opt/certbot/lib/python3.13/site-packages
+    # over 92,307 KB / 9,303 files. Measured time to first healthy on a clean
+    # Debian 13 host: 19m32s (StartedAt 02:34:04Z, first `exit=0` in the health
+    # log 02:54:36Z). It is an unbounded filesystem walk, not a slow fixed
+    # startup, so the only honest number is "as long as it takes".
+    #
+    # What a too-small `start_period` actually does: once it expires, `retries: 3`
+    # at `interval: 30s` marks the container `unhealthy` within 90s, and it stays
+    # red for the rest of init (FailingStreak climbed 0 -> 4 -> 9 -> 22). It is
+    # NOT broken; it recovers on its own the moment :81 answers, and Docker then
+    # reports healthy again with no restart. So the flag is a lie about a
+    # healthy install, which is exactly what a first-time installer must not see.
+    #
+    # Second and later boots skip the chown entirely: `docker compose restart npm`
+    # was healthy in well under a minute with no chown. That is why a populated
+    # volume makes any `start_period` look generous, and a fresh volume does not.
+    #
+    # So `docker compose up --wait` is not gated on this service (see
+    # tests/smoke.sh), which is the part that matters for the quick start. The
+    # healthcheck stays real and `docker compose ps` honestly shows `starting`.
+    # To tell "still initialising" from "actually broken", ask the layer that
+    # knows, because the health status cannot distinguish them:
     #   docker top <container> | grep chown
     # chown present = init. chown gone and :81 still refusing = a real defect.
-    # Second and later boots skip the chown and are quick.
+    # The long-term fix is upstream: the image should signal readiness from its
+    # s6 oneshot instead of the healthcheck guessing on a clock.
     healthcheck:
       test: ["CMD-SHELL", "timeout 3 bash -c 'cat < /dev/null > /dev/tcp/127.0.0.1/81' || exit 1"]
       interval: 30s
