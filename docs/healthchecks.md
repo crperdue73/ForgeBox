@@ -77,45 +77,49 @@ it. This section is the corrected account; the number is measured, the command
 that produced it is given, and the earlier guesses are recorded so they do not
 get repeated.
 
-### The measurement
+### The observation
 
-On a clean Debian 13 host (Nov 2026), from a **fresh volume**, full core stack:
-
-- `docker inspect --format "{{.State.StartedAt}}" forgebox-npm-1` -> `2026-11-16T02:34:04Z`
-- first `exit=0` in `docker inspect --format "{{json .State.Health.Log}}"` -> `02:54:36Z`
-- **time to first healthy: 19m32s (1172s)**
-
-The mechanism, from inside the container:
+From a **fresh volume**, full core stack, on a clean Debian 13 host (Nov 2026),
+sampled while live:
 
 - `chown -R 1000:1000 /opt/certbot/lib/python3.13/site-packages`, run by the
   image's s6 `prepare` oneshot on first boot.
 - That tree is **92,307 KB / 9,303 files**.
-- It is a **filesystem walk with no fixed duration**, not a slow startup with a
-  predictable length. Sampling observed it still running at 624s, still running
-  at 15+ minutes, `write_bytes` advancing at an unstable rate (17 MB in 46s, then
-  8 MB in 103s), PID in state `D`. Those are lower bounds; the 1172s figure is
-  the one completed run.
+- The chown was still running when sampling stopped at **624s**, at **15+
+  minutes**, and at **17+ minutes**. `write_bytes` advanced at an unstable rate:
+  17 MB in 46s, then 8 MB in 103s, then 8 MB in 130s. PID in state `D`, i.e.
+  disk wait, not hung.
+- `:81` refused from inside the container throughout.
+- `FailingStreak` observed climbing through 4, 9, 20, 22, 23, 25.
 
-### What a too-small `start_period` actually does
+**There is no witnessed completion time.** Every figure above is a lower bound
+from a run still in progress. An earlier draft of this file quoted a completion
+time of "19m32s (1172s)"; it has been removed because **nobody on this project
+watched that run finish**, and a total with no witness is not a measurement. If a
+future run completes under observation, that number belongs here with the
+command that produced it and the note that it is one sample of an unstable rate,
+not a ceiling.
+
+### What a too-small `start_period` does
 
 This is the part worth reading carefully, because the obvious guess is wrong.
 
 Once `start_period` expires, `retries: 3` at `interval: 30s` marks the container
 `unhealthy` within 90 seconds, and it **stays** red for the rest of init.
-`FailingStreak` was observed climbing `0 -> 4 -> 9 -> 22`.
 
-But the container is **not broken and does not need attention**: at 02:54:36 the
-health probe returned `exit=0` on its own and Docker reported `healthy` again with
-no restart. So the red flag is a **lie about a healthy install that has not
-finished initialising**. That is the defect: not a crash, not a hang, a display
-that tells a first-time installer their install failed when it did not.
+The container is **not broken**: `:81` refusing while the oneshot holds is the
+expected consequence of init still running, it needs no intervention, and Docker
+reports healthy again once nginx answers, with no restart. So the red flag is a
+**lie about a working install that has not finished initialising**. That is the
+defect: not a crash, not a hang, a display that tells a first-time installer their
+install failed when it did not.
 
-### First boot only, measured in both directions
+### First boot only
 
-- `docker compose restart npm` (volume kept): started 02:56:28, **healthy by
-  02:57, no chown runs.**
-- `docker compose down -v && docker compose up -d npm` (fresh volume): chown runs
-  again, ~20 minutes.
+- `docker compose restart npm` (volume kept): no chown runs and it is healthy
+  quickly.
+- `docker compose down -v && docker compose up -d npm` (fresh volume): the chown
+  runs again, unbounded.
 
 This is why the problem is invisible on a machine where the stack has been
 deployed before: the volume is already populated, the chown is skipped, and any
@@ -138,7 +142,8 @@ documented as upstream.
   | grep chown`. **Chown present = init, wait. Chown gone and `:81` still
   refusing = a real defect, report it.**
 
-Branch **(a)**, pinning `start_period` above 1172s, was considered and rejected
+Branch **(a)**, pinning `start_period` above the longest observed run, was
+considered and rejected
 for npm: it is still a number guessed about an unbounded operation, and a slower
 disk or a larger tree beats it. Picking a bigger number each time someone reports
 this is how a project ends up at 180 -> 360 -> 1800 and still failing.

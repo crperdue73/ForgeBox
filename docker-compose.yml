@@ -89,17 +89,21 @@ services:
     #
     # FIRST BOOT ONLY: an s6 prepare oneshot runs
     #   chown -R 1000:1000 /opt/certbot/lib/python3.13/site-packages
-    # over 92,307 KB / 9,303 files. Measured time to first healthy on a clean
-    # Debian 13 host: 19m32s (StartedAt 02:34:04Z, first `exit=0` in the health
-    # log 02:54:36Z). It is an unbounded filesystem walk, not a slow fixed
-    # startup, so the only honest number is "as long as it takes".
+    # over 92,307 KB / 9,303 files. It is an unbounded filesystem walk, not a slow
+    # fixed startup. Independent sampling observed it still running at 624s, at
+    # 15+ minutes, and at 17+ minutes, with `write_bytes` advancing at an
+    # unstable rate (17 MB in 46s, then 8 MB in 103s, then 8 MB in 130s), PID in
+    # state `D` (disk wait, not hung). Those are lower bounds. **This project has
+    # no witnessed completion time for it**, so no completion time is quoted
+    # here: a total from a run nobody watched finish is not a measurement.
     #
-    # What a too-small `start_period` actually does: once it expires, `retries: 3`
-    # at `interval: 30s` marks the container `unhealthy` within 90s, and it stays
-    # red for the rest of init (FailingStreak climbed 0 -> 4 -> 9 -> 22). It is
-    # NOT broken; it recovers on its own the moment :81 answers, and Docker then
-    # reports healthy again with no restart. So the flag is a lie about a
-    # healthy install, which is exactly what a first-time installer must not see.
+    # What a too-small `start_period` does: once it expires, `retries: 3` at
+    # `interval: 30s` marks the container `unhealthy` within 90s and it stays red
+    # for the rest of init (FailingStreak observed climbing through 4, 9, 20, 22,
+    # 23, 25). The container is NOT broken: `:81` refusing while the oneshot
+    # holds is the expected consequence, and it recovers with no restart once
+    # nginx answers. So the flag is a lie about a working install, which is
+    # exactly what a first-time installer must not see.
     #
     # Second and later boots skip the chown entirely: `docker compose restart npm`
     # was healthy in well under a minute with no chown. That is why a populated
