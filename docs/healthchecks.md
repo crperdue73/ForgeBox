@@ -110,16 +110,24 @@ earlier draft of this file said npm "flips to healthy once nginx answers on
 :81." That is not something this project can promise, and a bench observation
 proves it:
 
-- npm ran with `start_period: 360s` (the previous value) and reached
-  `FailingStreak: 18` against `interval: 30s`, i.e. roughly nine minutes of
-  failing probes, with the container still `health=unhealthy`.
-- Whether that was (i) init still chowning, so nginx was genuinely not up yet,
-  or (ii) init finished and nginx still not answering on `:81`, **was not
-  established.** Option (ii) would be the same class of fault as the 2.16.0
+- npm ran with `start_period: 360s` (the previous value; observed as
+  `StartPeriod: 360000000000` ns, i.e. `6m0s`, on the live container) and
+  reached `FailingStreak: 18` against `interval: 30s`, i.e. roughly nine minutes
+  of failing probes, with the container still `health=unhealthy`.
+- **Which value a given box is running is a separate question from what the file
+  says now.** The container in that observation predates the `start_period: 30s`
+  change, so it was running 360s. Both readings have been quoted at each other
+  in that window and it is the same namespace fault as measuring a port count
+  and reporting an entry count: the file is one object, the running container is
+  another, and the second one is what a probe actually touches.
+- Later resolved as **(i)** by the chown test: at 15:10 elapsed the chown was
+  still present, `write_bytes` advancing, PID in `D`. So `:81` refusing during
+  init is expected and is not evidence against the image. Option (ii) would have
+  been the same class of fault as the 2.16.0
   proxy-up-with-no-admin-behind-it regression.
 
-The distinction matters and the project does not get to assume the flattering
-one. So:
+The distinction mattered enough to measure rather than argue: it is the
+difference between a documentation fix and a shipped regression. So:
 
 - A `start_period` does not merely risk being too short. `FailingStreak`
   counts probes after the window ends, so a container can sit at
