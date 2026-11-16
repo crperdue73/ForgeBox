@@ -84,15 +84,22 @@ services:
       - npm_data:/data
       - npm_letsencrypt:/etc/letsencrypt
     profiles: []
-    # No `start_period` and no fixed window: this container's FIRST boot runs an
-    # s6 prepare oneshot (`chown -R` over the certbot site-packages tree, ~93 MB
-    # / ~9.3k files) whose duration is not bounded by anything we control. It was
-    # still running when sampling stopped at 624s, and on a later run at 15+
-    # minutes. That is a lower bound, not a duration, and it is the reason no
-    # number here is a guess worth making. `docker compose up --wait`
-    # does not gate on this service (see tests/smoke.sh); the healthcheck is
-    # still real, so `docker compose ps` shows `starting` for as long as init
-    # actually takes, then flips to `healthy` once nginx answers on :81.
+    # No meaningful `start_period` and no fixed window: this container's FIRST
+    # boot runs an s6 prepare oneshot (`chown -R` over the certbot site-packages
+    # tree, 91 MB / 8197 files) whose duration is not bounded by anything we
+    # control. It outlived every sampling window: still running at 624s, still
+    # running at 15+ minutes, write_bytes advancing ~1 MB per 2 min, PID in D
+    # (disk wait, not hung). Those are lower bounds, not durations, and the rate
+    # is not stable enough to extrapolate one. So no number here would be worth
+    # guessing. `docker compose up --wait` does not gate on this service (see
+    # tests/smoke.sh). The healthcheck stays real, and `docker compose ps` will
+    # honestly show `starting` for as long as init takes. It does NOT promise
+    # `healthy` afterwards: a container whose init overruns start_period keeps
+    # incrementing FailingStreak and wears `unhealthy` for the whole init, which
+    # is exactly what this one did. To tell "still initialising" from "actually
+    # broken", ask the layer that knows:
+    #   docker top <container> | grep chown
+    # chown present = init. chown gone and :81 still refusing = a real defect.
     # Second and later boots skip the chown and are quick.
     healthcheck:
       test: ["CMD-SHELL", "timeout 3 bash -c 'cat < /dev/null > /dev/tcp/127.0.0.1/81' || exit 1"]
