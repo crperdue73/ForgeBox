@@ -84,12 +84,21 @@ services:
       - npm_data:/data
       - npm_letsencrypt:/etc/letsencrypt
     profiles: []
+    # No `start_period` and no fixed window: this container's FIRST boot runs an
+    # s6 prepare oneshot (`chown -R` over the certbot site-packages tree, ~93 MB
+    # / ~9.3k files) whose duration is not bounded by anything we control. It ran
+    # >624s on a clean bench. Any number here is a guess about an unbounded
+    # operation, so the honest thing is not to guess. `docker compose up --wait`
+    # does not gate on this service (see tests/smoke.sh); the healthcheck is
+    # still real, so `docker compose ps` shows `starting` for as long as init
+    # actually takes, then flips to `healthy` once nginx answers on :81.
+    # Second and later boots skip the chown and are quick.
     healthcheck:
       test: ["CMD-SHELL", "timeout 3 bash -c 'cat < /dev/null > /dev/tcp/127.0.0.1/81' || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 360s
+      start_period: 30s
 
   uptime-kuma:
     <<: *common

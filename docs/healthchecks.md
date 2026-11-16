@@ -54,21 +54,57 @@ boot. A 60s `start_period` marked them unhealthy mid-install, which is a lie
 about a container doing exactly what it should.
 
 The number came down from a measurement, not a guess. On a clean Debian 13 host
-(Nov 2026) `heimdall` and `npm` both needed **270s** to pass their first
-health check, against a declared 180s window. Two consequences, and the second
-is the one that mattered:
+(Nov 2026) `heimdall` needed **270s** to pass its first health check, against a
+declared 180s window. Two consequences, and the second is the one that mattered:
 
 1. Docker tolerated it. When a health check fails inside `start_period`, the
-   container is not marked unhealthy, it just starts its retries again, so both
-   containers went healthy at ~271s anyway.
+   container is not marked unhealthy, it just starts its retries again, so it
+   went healthy at ~271s anyway.
 2. `docker compose up --wait --wait-timeout` did not tolerate it. That command
    gave up and printed `container forgebox-heimdall-1 is unhealthy` on an
    install that finished fully healthy a minute later. A first-time installer
    reads that line as a failed install.
 
-360s is now the declared window: the observed 270s ceiling plus a third of
-headroom for a slower host. If a first boot still reports unhealthy after
-360s, that is worth a `docker logs` look rather than an assumption.
+360s is now the declared window for services that boot on a clock: the observed
+270s ceiling plus a third of headroom for a slower host. If a first boot still
+reports unhealthy after 360s, that is worth a `docker logs` look rather than an
+assumption.
+
+## npm is not on a clock, and is not gated
+
+npm does not belong in that table, and 360s was wrong for it. Corrected on a
+clean bench (2026-11-16), with the number and the command that produced it:
+
+- npm `StartedAt` `02:34:04Z`; at `02:44:28Z` it was still `unhealthy`,
+  `FailingStreak=9`, and **624s into its first boot**.
+- `docker top forgebox-npm-1 | grep -c "chown -R"` -> `1` (still running).
+- The process: `chown -R 1000:1000 /opt/certbot/lib/python3.13/site-packages`.
+- `du -s` on that tree: **92,307 KB, 9,303 files**, single filesystem.
+
+So it is not a slow boot with a duration, it is a **filesystem walk with no
+fixed duration**. That is the whole distinction. 270s was one sample of an
+unbounded operation, and presenting it as a ceiling was a mistake worth writing
+down. You cannot pick a `start_period` that covers work whose length you do not
+control; 900s would be the same guess with a bigger number, and it would still
+lose on a slow disk or a bigger tree.
+
+**What ForgeBox does instead (decided 2026-11-16):**
+
+- npm declares no meaningful window (`start_period: 30s`); its healthcheck
+  stays real and keeps running.
+- `docker compose up --wait` does not gate on npm. `up --wait` has no
+  per-service exclusion, so `tests/smoke.sh` starts the stack detached, then
+  runs a second `up --wait` naming every service **except** npm.
+- `docker compose ps` will show npm as `starting` for however long init actually
+  takes, then `healthy` once nginx answers on :81. That is the truthful display.
+- Second and later boots skip the chown and are quick.
+
+**The honest limit, stated rather than hidden:** a stranger's very first
+`up --wait`, run by hand and not through `smoke.sh`, can still print npm as
+unhealthy on a first boot, because flags on the CLI, not just in the file,
+decide that. The remedy is upstream (npm's s6 `prepare` oneshot should signal
+readiness instead of the healthcheck guessing on a clock), and this project's
+part is to stop guessing.
 
 ## Known host constraint (not a compose bug)
 

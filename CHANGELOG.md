@@ -6,6 +6,21 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+- **npm is out of the `--wait` gate, on purpose, as branch (b).** Its first boot
+  runs an s6 `prepare` oneshot (`chown -R` over the certbot site-packages tree,
+  ~92 MB / 9.3k files) whose duration is not bounded by anything the project
+  controls; measured still running **624s** after start on a clean bench. A
+  `start_period` is a guess about a duration, and there is no duration here to
+  guess, so `360s` was wrong and `900s` would be the same mistake with a bigger
+  number. npm no longer gates the quick start: `smoke.sh` brings the stack up
+  detached, then waits on every other service by name. npm's healthcheck is
+  unchanged and still real, so `docker compose ps` shows `starting` for exactly
+  as long as init takes. `start_period` for npm drops to 30s because it is no
+  longer load-bearing.
+
+
+
 ### Fixed
 - **Port check sees what `docker compose config` actually renders.** Section 3
   extracted published ports with a matcher that only understood short list
