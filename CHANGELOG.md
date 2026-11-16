@@ -4,6 +4,20 @@ All notable changes to ForgeBox are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **Port check sees what `docker compose config` actually renders.** Section 3
+  extracted published ports with a matcher that only understood short list
+  syntax (`- "8080:80"`). Compose normalises every published port to long
+  syntax (`- mode: ingress` / `target:` / `published:` / `protocol:`), so on a
+  real render the parser found nothing, printed nothing, and exited 0. The
+  check was passing on zero. It now parses all three shapes the file can take
+  (short list, short inline, long syntax) and resolves the transport from
+  `protocol:` so tcp/udp pairs stay distinct. Two long-syntax fixtures were
+  added to the self-test, including a tcp/udp pair, because the old self-test
+  only ever fed it short syntax and therefore could not catch this.
+
 ## [1.0.0] — 2026-11-15
 
 First tagged release. Cut from `main` at commit `2af2f43` (2026-11-02) with no

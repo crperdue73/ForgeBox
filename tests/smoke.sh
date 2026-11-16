@@ -89,16 +89,54 @@ host_ports() {
         printf "export %s=%s\n", k, v
       }
     }
+    # Three shapes have to be understood here, and the third is the one that
+    # bit us on a real bench:
+    #   short list    - "8080:80"
+    #   short inline  - ports: ["8080:80"]
+    #   long syntax   - - mode: ingress / target: 9000 / published: "9000"
+    # `docker compose config` NORMALISES published ports to long syntax, so a
+    # parser that only knows the short form finds nothing and exits 0. That is a
+    # check passing on zero, which is the failure this whole file exists to
+    # catch, so both shapes are parsed and both are exercised by the self-test.
     /^[[:space:]]*ports:/ {
       line = $0
       sub(/^[[:space:]]*ports:[[:space:]]*\[?/, "", line)
       sub(/\]?[[:space:]]*$/, "", line)
-      n = split(line, parts, ",")
-      for (i = 1; i <= n; i++) print parts[i]
-      found = 1; inp = 1; next
+      if (line ~ /[^[:space:]]/) {
+        n = split(line, parts, ",")
+        for (i = 1; i <= n; i++) print parts[i]
+        found = 1
+      }
+      inp = 1; next
     }
-    /^[[:space:]]*-[[:space:]]*["'"'"']?[0-9$]/ && inp { print $0; found = 1; next }
-    { inp = 0 }
+    # Long syntax, which is what `docker compose config` renders every
+    # published port into. Items are split on the "- mode:" bullet; inside an
+    # item the host side is `published:` and the transport is `protocol:`.
+    # Bare `- 8080:80` entries still work above, so this parser reads both
+    # shapes and the self-test feeds it both.
+    inp && /^[[:space:]]*-[[:space:]]*mode:/ {
+      if (pending != "") { printf "%s:%s\n", pending, (pending_proto == "" ? "tcp" : pending_proto); found = 1 }
+      pending = ""; pending_proto = ""
+      next
+    }
+    inp && /^[[:space:]]*published:/ {
+      x = $0
+      sub(/^[[:space:]]*published:[[:space:]]*/, "", x)
+      gsub(/["\047[:space:]]/, "", x)
+      pending = x
+      next
+    }
+    inp && /^[[:space:]]*protocol:/ {
+      x = $0
+      sub(/^[[:space:]]*protocol:[[:space:]]*/, "", x)
+      gsub(/["\047[:space:]]/, "", x)
+      pending_proto = x
+      if (pending != "") { printf "%s/%s\n", pending, (pending_proto == "" ? "tcp" : pending_proto); found = 1; pending = ""; pending_proto = "" }
+      next
+    }
+    inp && /^[[:space:]]*target:/ { next }
+    inp && /^[[:space:]]*-[[:space:]]*["\047]?[0-9$]/ { print $0; found = 1; next }
+    { inp = 0; if (pending != "") { printf "%s:%s\n", pending, (pending_proto == "" ? "tcp" : pending_proto); found = 1; pending = ""; pending_proto = "" } }
     END { if (!found) exit 3 }
   ' "$1" | tr -d '"\r' | sed "s/'//g" \
     | sed -E 's/^[[:space:]]*-?[[:space:]]*//; s/[[:space:]]+$//' \
@@ -159,6 +197,20 @@ if [ "${SMOKE_SELFTEST:-0}" = "1" ]; then
   if [ "$(host_ports "$tmp/var.yml")" = "9000:tcp" ]; then
     ok "port check resolves a var default from .env.example"
   else bad "port check did not resolve the var placeholder (got: $(host_ports "$tmp/var.yml"))"; fi
+  # long syntax is what `docker compose config` normalises every published port
+  # into. A parser that only knows the short form finds nothing here, exits 0,
+  # and the port check passes on zero — so this fixture is the one that proves
+  # section 3 can still see a real file. Same content as the short fixture.
+  printf '%s\n' 'services:' '  a:' '    ports:' '      - mode: ingress' '        target: 9000' '        published: "9000"' '        protocol: tcp' '  b:' '    ports:' '      - mode: ingress' '        target: 9000' '        published: "9000"' '        protocol: tcp' > "$tmp/long.yml"
+  long_dup="$(host_ports "$tmp/long.yml" | sort | uniq -d)"
+  if [ "$long_dup" = "9000:tcp" ]; then
+    ok "port check parses long syntax and sees its duplicate"
+  else bad "port check is blind to long syntax (got: $(host_ports "$tmp/long.yml" | tr '\n' ' '))"; fi
+  # and tcp/udp must survive long syntax as distinct, the same way they do short
+  printf '%s\n' 'services:' '  a:' '    ports:' '      - mode: ingress' '        target: 53' '        published: "53"' '        protocol: tcp' '      - mode: ingress' '        target: 53' '        published: "53"' '        protocol: udp' > "$tmp/longproto.yml"
+  if [ -z "$(host_ports "$tmp/longproto.yml" | sort | uniq -d)" ]; then
+    ok "port check keeps long-syntax tcp/udp apart"
+  else bad "port check collapsed a long-syntax tcp/udp pair"; fi
   # tag check must see :latest
   printf 'services:\n  a:\n    image: nginx:latest\n' > "$tmp/latest.yml"
   if grep -qE 'image:[[:space:]]*[^[:space:]]+:latest' "$tmp/latest.yml"; then
