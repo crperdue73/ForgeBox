@@ -184,7 +184,10 @@ cat <<'EXPECT'
                     gives up. It is reporting that :81 is not answering yet,
                     which is true, and is NOT a verdict on your install.
        minute 5     still `unhealthy`, still fine. Do not restart it.
-       minute 25    npm turns `healthy` and :81 answers. Nothing was wrong.
+       minute 21    npm turns `healthy` and :81 answers. Nothing was wrong.
+                    Watched once at 21.5 min. A slower disk takes longer;
+                    nothing bounds it from above, so this is an observation
+                    and not a deadline.
 
   To tell "still working" from "actually broken", ask the container:
 

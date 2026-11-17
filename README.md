@@ -59,7 +59,7 @@ What to expect, so you are not debugging normal behaviour:
 | minute 1 | everything starts; npm is `starting` | no |
 | minute 2 | npm flips to `unhealthy` | no — its healthcheck has a 30s timer and 3 tries, then reports the truth about `:81` |
 | minute 5 | npm still `unhealthy` | no — do not restart it; a restart only pays the wait again |
-| minute ~25 | npm turns `healthy`, `:81` answers | nothing was wrong |
+| minute 21 | npm turns `healthy`, `:81` answers | nothing was wrong — watched once at 21.5 min; slower disks take longer, and nothing bounds it from above |
 
 To tell "still working" from "actually broken", ask the container rather than
 the status:
