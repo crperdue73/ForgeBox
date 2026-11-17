@@ -52,6 +52,27 @@ Then open the ForgeBox dashboard (Heimdall) at `http://<host>:8080`.
 > rebuild, even on volumes you have had for months. Everything else is up while
 > it works. See [`docs/troubleshooting.md`](docs/troubleshooting.md).
 
+What to expect, so you are not debugging normal behaviour:
+
+| When | What you will see | Is it broken? |
+| --- | --- | --- |
+| minute 1 | everything starts; npm is `starting` | no |
+| minute 2 | npm flips to `unhealthy` | no — its healthcheck has a 30s timer and 3 tries, then reports the truth about `:81` |
+| minute 5 | npm still `unhealthy` | no — do not restart it; a restart only pays the wait again |
+| minute ~25 | npm turns `healthy`, `:81` answers | nothing was wrong |
+
+To tell "still working" from "actually broken", ask the container rather than
+the status:
+
+```bash
+docker top forgebox-npm-1 | grep chown
+```
+
+`chown` present means still initialising — wait. `chown` gone and `:81` still
+refusing means genuinely broken — read `docker compose logs npm`. On a fresh
+install this was watched end to end at **21.5 minutes with no restart**, so the
+number above is observed, not a ceiling.
+
 ### Add more of the stack (profiles)
 
 ForgeBox uses **compose profiles** so a small host can run a subset and a big one can run it all.

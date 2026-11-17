@@ -102,23 +102,43 @@ with no witness is not a measurement. If a future run completes under
 observation, that number belongs here with the command that produced it and the
 note that it is one sample of an unstable rate, not a ceiling.
 
-**Two independent benches have now witnessed a full run** (2026-11-17, round-2
-and round-3 reports from clean-room hosts, same operator, different images of the
-host). Round 2: started `12:43:09Z`, backend answering `13:03:44Z`, chown PID
-`3111` gone by `13:04:12Z` — **>1234s (~20.5 min)**. Round 3, measured end to end
-rather than sampled: started `22:06:24Z`, chown gone and `:81` answering 200 at
-`22:28:21Z` — **>1317s (~22 min)**, and it reached `healthy` with
-`RestartCount` still `0`. Round 3 is the better observation because the stop was
-witnessed rather than inferred.
+**Earlier runs, all sampled rather than witnessed end to end:** round 2 started
+`12:43:09Z`, backend answering `13:03:44Z`, chown PID `3111` gone by `13:04:12Z`
+— **>1234s (~20.5 min)**; round 3 started `22:06:24Z`, chown gone and `:81`
+answering 200 at `22:28:21Z` — **>1317s (~22 min)**, reaching `healthy` with
+`RestartCount` 0. Those are lower bounds of the same kind as everything else
+here: the observation stops before the work does.
 
-Both are on fresh volumes with `ZFS`-backed overlayfs. That storage layer is
-named as an unseparated variable, not a cause, and no ext4 figure exists yet. The
-two numbers are lower bounds of the same kind: together they strengthen "no
-ceiling" rather than establish one — the observed maximum has grown every time
-the measurement got better (1172s inferred, 1234s sampled, 1317s witnessed), which
-is what an unbounded operation looks like under improved instrumentation.
-Neither sample establishes that ext4 behaves the same. Anyone with an ext4 host
-who watches one run finish should add the number and the storage layer.
+**One bench has watched an init finish** (2026-11-17, round-4 report): started
+`22:42:42`, chown gone `23:03:51`, `:81` answering 200 and `healthy` at
+`23:04:21` — **~21.5 min, `RestartCount` 0 throughout**. Bench: fresh volumes,
+ZFS-backed overlayfs. This is the strongest observation the project has, because
+it is the only one where the end was witnessed rather than sampled, and because
+the same run showed the exemption releasing: the warm rerun afterwards reads
+`running/healthy` and nothing is exempted, so the rule is not sticky.
+
+One witness is not a ceiling. It is one bench, one storage layer, one run.
+
+**What that run does and does not prove.** It proves the chown-present branch is
+reachable on a real cold stack and that real `docker top` output looks like the
+stubbed fixture. It does **not** prove the SKIP branch is correct on a real
+stack, because a correct init never reaches it — SKIP is covered only by
+fixtures and by stubbed runs. Recorded because "the exemption fired correctly"
+and "the indeterminate path is right" are different claims and only the first
+was observed.
+
+**A limit worth stating for anyone writing tests here:** fixtures can prove the
+rule, but only a live init can prove the rule *releases*. The rule is a state
+machine over time, and a stub has no time in it. That is why round 3 cost twenty
+minutes of watching to settle what no unit test could.
+
+The numbers keep growing as the measurement gets better — 1172s inferred, 1234s
+sampled, 1317s sampled, 21.5 min witnessed — which is what an unbounded
+operation looks like under improved instrumentation. Every sample is on fresh
+volumes with `ZFS`-backed overlayfs. That storage layer is named as an
+unseparated variable, not a cause: no ext4 figure exists yet, and none of these
+establish that ext4 behaves the same. Anyone with an ext4 host who watches one
+run finish should add the number and the storage layer.
 
 ### What a too-small `start_period` does
 

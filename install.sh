@@ -164,6 +164,44 @@ if [ "$DO_DEPLOY" -eq 1 ]; then
   ok "Stack deployed. Check status with: docker compose ps"
   echo
 fi
+cat <<'EXPECT'
+
+  ---------------------------------------------------------------------------
+  WHAT THE FIRST 25 MINUTES LOOK LIKE
+  ---------------------------------------------------------------------------
+  If you start the stack and npm looks broken, it probably is not. This is the
+  one thing about this project that surprises people, so it is printed here
+  rather than left in a doc you would have to go find.
+
+  A NEW npm container spends ~20 minutes initialising before :81 answers. That
+  is normal. It re-walks a 9,303-file tree shipped inside the image, and the
+  time is paid again on every recreate or rebuild, even on volumes you have had
+  for months. Only a plain `docker restart` skips it.
+
+       minute 1     everything starts. npm shows `starting`.
+       minute 2     npm flips to `unhealthy`. This is the confusing part.
+                    Its healthcheck is on a 30s timer and tries 3 times, then
+                    gives up. It is reporting that :81 is not answering yet,
+                    which is true, and is NOT a verdict on your install.
+       minute 5     still `unhealthy`, still fine. Do not restart it.
+       minute 25    npm turns `healthy` and :81 answers. Nothing was wrong.
+
+  To tell "still working" from "actually broken", ask the container:
+
+       docker top forgebox-npm-1 | grep chown
+
+     chown present  -> still initialising, wait
+     chown gone and :81 still refusing -> genuinely broken, read the logs:
+                                         docker compose logs npm
+
+  Watched on a fresh install: 21.5 minutes, no restart, healthy at the end.
+  Faster disks finish sooner; nothing bounds it from above.
+
+  Run `bash tests/smoke.sh --up` for a cold-stack check. It waits on every
+  service except npm and will not call npm a failure while chown is running.
+  ---------------------------------------------------------------------------
+
+EXPECT
 ok "Next steps:"
 echo "  1) cd /opt/forgebox   (copy docker-compose.yml + .env here, or clone the repo)"
 echo "  2) cp .env.example .env && \$EDITOR .env"
