@@ -135,14 +135,21 @@ tunnel. Gluetun is not required for the rest of the stack — just don't pass
 
 ## npm takes ~20 minutes and looks broken
 
-Symptom — on a **new** `npm` container, `docker compose ps` shows `npm` as `starting` (or
-`unhealthy`) for a long time, and `:81` refuses connections. The rest of the stack is up.
+Symptom — on a **new** `npm` container, `docker compose ps` shows `npm` as `starting` for the
+first ~90 seconds and `unhealthy` for the rest of init, and `:81` refuses connections. The
+rest of the stack is up.
 
 **This is init, not a failure.** The image runs an s6 `prepare` oneshot on container
 start: `chown -R` over the certbot site-packages tree (92,307 KB / 9,303 files). It is an
-unbounded filesystem walk — observed at 624s, 15+ minutes, 17+ minutes on this project's
-benches, and >1234s (~20.5 min) in one observed full run on a ZFS-backed host. Faster
+unbounded filesystem walk — observed at 624s, 15+ minutes, 17+ minutes, >1234s (~20.5 min)
+and >1317s (~22 min) across clean-room benches, the last measured end to end. Faster
 disks finish sooner; there is no number that is correct for every host.
+
+**Why it goes red instead of staying amber:** `start_period` is 30s and `retries: 3` at
+`interval: 30s`, so Docker calls it `unhealthy` about 90 seconds in and keeps saying so
+until init finishes. That status is honest about `:81` and is not a verdict on your
+install. Do not try to fix it by raising `start_period` — see
+`docs/healthchecks.md` for why that is a guess that a slower host will always beat.
 
 **Which events pay it:**
 
@@ -163,6 +170,10 @@ docker top forgebox-npm-1 | grep chown
 
 `chown` present = still initialising, wait. `chown` gone and `:81` still refusing =
 something is actually wrong, open an issue with `docker compose logs npm`.
+
+If `tests/smoke.sh --up` reports npm as **SKIP** rather than PASS or FAIL, it means exactly
+that indeterminate state: `unhealthy` with no chown visible. It is not a pass, and it is
+not the suite guessing a failure — check the log line it prints.
 
 Do **not** run plain `docker compose up --wait` as your first command. It gates on every
 healthcheck or none, with no per-service opt-out, so it exits 1 on npm and prints

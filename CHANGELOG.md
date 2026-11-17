@@ -6,6 +6,25 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+- **`tests/smoke.sh --up` failed on a cold stack while passing on a warm one.**
+  The npm exemption was keyed on `health == "starting"`, but `start_period: 30s`
+  plus `retries: 3` at `interval: 30s` flips the container to `unhealthy` about 90
+  seconds into a ~22-minute init. So the exemption covered a 90-second window of
+  a 22-minute operation and the suite passed or failed depending on when the
+  sample landed: same commit, same box, same volumes, `16/16` warm and `14/16`
+  cold on a clean bench. The rule now keys on the thing that actually separates
+  init from breakage — `chown` present in the container — so it holds for the
+  whole walk instead of the first 90 seconds.
+- **The unchanged state is no longer a guess in either direction.** npm
+  `unhealthy` with no `chown` running is reported as **SKIP (indeterminate)**, not
+  PASS and not FAIL: that state cannot be attributed without reading logs, and
+  calling it either way would be inventing a number. Every other service is
+  still judged on health alone.
+- Both npm reads in the suite — the post-deploy read and the watch-window read —
+  used different logic, and only the first had any exemption at all. That is why
+  round 3 printed two npm failures instead of one. Both now use one helper.
+
 ### Changed
 - **npm's ~20-minute init is once per NEW container, not once ever.**
   `/opt/certbot` is not a declared mount, so it lives in the container writable
@@ -29,8 +48,10 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   guess, so `360s` was wrong and a larger number would be the same mistake with
   more digits. `smoke.sh` brings the stack up detached, then waits on every
   service except npm, by name. npm's healthcheck is unchanged and still real, so
-  `docker compose ps` shows `starting` for exactly as long as init takes. npm's
-  `start_period` drops to 30s because it is no longer load-bearing.
+  `docker compose ps` shows `starting` for 90s and `unhealthy` for the rest of
+  init; both are accurate about `:81`. npm's `start_period` drops to 30s because
+  it is no longer load-bearing — and staying at 30s is only safe because the test
+  no longer treats that status as a verdict.
 
 ### Documented
 - **`docker compose up --wait` on a fresh stack still exits 1 on npm, and that

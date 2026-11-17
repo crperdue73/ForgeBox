@@ -117,6 +117,13 @@ services:
     # was also wrong. The restart experiment settled it: per new container.
     # Reasoning and the corrected mechanism are in docs/healthchecks.md.
     #
+    # `start_period: 30s` was lowered here in 265c826 on the reasoning that npm no
+    # longer had to satisfy anything. It does: tests/smoke.sh still reads this
+    # healthcheck, and a short start_period flips the container to `unhealthy`
+    # within 90s of a ~22-minute init. That made a correct install print FAIL for
+    # a stranger on a cold stack (round 3). `start_period` stays short on purpose —
+    # see below — and the test no longer trusts this status alone.
+    #
     # npm is excluded from the `--wait` gate by tests/smoke.sh, NOT by anything
     # this file can declare. `docker compose up --wait` gates on every healthcheck
     # or none; there is no per-service opt-out, so a plain `up --wait` against a
@@ -128,6 +135,9 @@ services:
     # knows, because the health status cannot distinguish them:
     #   docker top <container> | grep chown
     # chown present = init. chown gone and :81 still refusing = a real defect.
+    # That is the question tests/smoke.sh asks, and it is why this healthcheck can
+    # stay honest instead of being inflated to a guess: a red status here is the
+    # truth about `:81` and says nothing about whether init will finish.
     # The long-term fix is upstream: the image should signal readiness from its
     # s6 oneshot instead of the healthcheck guessing on a clock.
     healthcheck:

@@ -94,7 +94,7 @@ distinction turned out not to be load-bearing:
 - `:81` refused from inside the container throughout.
 - `FailingStreak` observed climbing through 4, 9, 20, 22, 23, 25.
 
-**There is still no witnessed completion time on this project's own hardware.**
+**No completion time has been witnessed on this project's own hardware.**
 Every figure above is a lower bound from a run still in progress. An earlier
 draft of this file quoted a completion time of "19m32s (1172s)"; it has been
 removed because **nobody on this project watched that run finish**, and a total
@@ -102,13 +102,23 @@ with no witness is not a measurement. If a future run completes under
 observation, that number belongs here with the command that produced it and the
 note that it is one sample of an unstable rate, not a ceiling.
 
-**One independent bench has now witnessed a full run** (2026-11-17, round-2
-report from a clean-room host): container started `12:43:09Z`, backend answering
-`13:03:44Z`, chown PID `3111` gone by `13:04:12Z` — **>1234s (~20.5 min)** on
-fresh volumes, one sample, `ZFS`-backed overlayfs. It is recorded as a lower
-bound of the same kind: it does not establish a ceiling, and it does not
-establish that ext4 behaves the same. Anyone with an ext4 host who watches one
-run finish should add the number and the storage layer.
+**Two independent benches have now witnessed a full run** (2026-11-17, round-2
+and round-3 reports from clean-room hosts, same operator, different images of the
+host). Round 2: started `12:43:09Z`, backend answering `13:03:44Z`, chown PID
+`3111` gone by `13:04:12Z` — **>1234s (~20.5 min)**. Round 3, measured end to end
+rather than sampled: started `22:06:24Z`, chown gone and `:81` answering 200 at
+`22:28:21Z` — **>1317s (~22 min)**, and it reached `healthy` with
+`RestartCount` still `0`. Round 3 is the better observation because the stop was
+witnessed rather than inferred.
+
+Both are on fresh volumes with `ZFS`-backed overlayfs. That storage layer is
+named as an unseparated variable, not a cause, and no ext4 figure exists yet. The
+two numbers are lower bounds of the same kind: together they strengthen "no
+ceiling" rather than establish one — the observed maximum has grown every time
+the measurement got better (1172s inferred, 1234s sampled, 1317s witnessed), which
+is what an unbounded operation looks like under improved instrumentation.
+Neither sample establishes that ext4 behaves the same. Anyone with an ext4 host
+who watches one run finish should add the number and the storage layer.
 
 ### What a too-small `start_period` does
 
@@ -206,7 +216,16 @@ upstream.
   exclusion, so `tests/smoke.sh` starts the stack detached, then runs a second
   `up --wait` naming every service **except** npm.
 - npm's healthcheck is unchanged and still real, so `docker compose ps` shows
-  `starting` for exactly as long as init takes.
+  `starting` for the first 90s and `unhealthy` for the rest of init. Both are
+  accurate about `:81`; neither is a verdict on the install.
+- **The smoke test does not judge npm on health status.** An earlier version
+  exempted npm only while `health == "starting"`, which is a 90-second window on
+  a ~22-minute operation: it passed when the sample landed early and failed when
+  it landed late, on the same commit and the same box. The test now asks the
+  question below instead — chown present means init is in progress, whatever
+  Docker reports. If npm is `unhealthy` with no chown running, the suite reports
+  it as **indeterminate**, not as a pass and not as a guessed failure, because
+  that state cannot be attributed without reading logs.
 - Checklist for anyone who sees npm red at any start: `docker top <container>
   | grep chown`. **Chown present = init, wait. Chown gone and `:81` still
   refusing = a real defect, report it.**
@@ -215,7 +234,12 @@ Branch **(a)**, pinning `start_period` above the longest observed run, was
 considered and rejected
 for npm: it is still a number guessed about an unbounded operation, and a slower
 disk or a larger tree beats it. Picking a bigger number each time someone reports
-this is how a project ends up at 180 -> 360 -> 1800 and still failing.
+this is how a project ends up at 180 -> 360 -> 1800 and still failing. Round 3
+made the cost of that guess concrete from the other direction: `start_period: 30s`
+is not the problem and raising it is not the fix, but it does guarantee the
+container spends almost all of init in `unhealthy`, which is only manageable if
+nothing treats `unhealthy` as a verdict. That is a property of the test, not of
+the number.
 
 Branch **(b)**, having the image signal readiness from its s6 oneshot, is the
 real fix and it belongs upstream. It is out of scope for this project and is
