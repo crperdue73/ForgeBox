@@ -90,10 +90,12 @@ services:
     # An s6 prepare oneshot runs
     #   chown -R 1000:1000 /opt/certbot/lib/python3.13/site-packages
     # over 92,307 KB / 9,303 files. It is an unbounded filesystem walk, not a slow
-    # fixed startup. How often it runs is NOT established: it was observed on a
-    # fresh volume AND on a container whose persistent volumes already existed
-    # and had been chowned by a previous run. So do not assume only the first
-    # start pays this. See docs/healthchecks.md.
+    # fixed startup. It runs **once per NEW container**: `/opt/certbot` is not a
+    # declared mount, so it lives in the container writable layer, and every new
+    # container gets a fresh unchowned copy. A `docker restart` of the same
+    # container does not pay it (verified: zero chown processes, healthy in 20s).
+    # A recreate does pay it again — `up --force-recreate`, an image re-pull, any
+    # rebuild — even on warm volumes. See docs/healthchecks.md.
     # Independent sampling observed it still running at 624s, at
     # 15+ minutes, and at 17+ minutes, with `write_bytes` advancing at an
     # unstable rate (17 MB in 46s, then 8 MB in 103s, then 8 MB in 130s), PID in
@@ -110,13 +112,18 @@ services:
     # exactly what a first-time installer must not see.
     #
     # One `docker compose restart npm` came back quickly with no chown, which is
-    # where an earlier "first boot only" note came from; a later per-start
-    # observation contradicts it, so neither claim ships. The distinguishing
-    # experiment is in docs/healthchecks.md.
+    # where an earlier "first boot only" note came from; a later observation on a
+    # *new* container was slow on reused volumes, which read as "per start" and
+    # was also wrong. The restart experiment settled it: per new container.
+    # Reasoning and the corrected mechanism are in docs/healthchecks.md.
     #
-    # So `docker compose up --wait` is not gated on this service (see
-    # tests/smoke.sh), which is the part that matters for the quick start. The
-    # healthcheck stays real and `docker compose ps` honestly shows `starting`.
+    # npm is excluded from the `--wait` gate by tests/smoke.sh, NOT by anything
+    # this file can declare. `docker compose up --wait` gates on every healthcheck
+    # or none; there is no per-service opt-out, so a plain `up --wait` against a
+    # fresh stack still fails on npm and exits 1. That is expected, not a bug:
+    # the supported path (install.sh, tests/smoke.sh) starts detached and gates on
+    # every service except this one. The healthcheck stays real and
+    # `docker compose ps` honestly shows `starting`.
     # To tell "still initialising" from "actually broken", ask the layer that
     # knows, because the health status cannot distinguish them:
     #   docker top <container> | grep chown

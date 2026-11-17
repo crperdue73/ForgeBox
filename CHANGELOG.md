@@ -7,22 +7,40 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Changed
-- **npm is out of the `--wait` gate, on purpose.** Its first boot runs an s6
-  `prepare` oneshot (`chown -R` over the certbot site-packages tree, 92,307 KB /
+- **npm's ~20-minute init is once per NEW container, not once ever.**
+  `/opt/certbot` is not a declared mount, so it lives in the container writable
+  layer and every new container gets a fresh unchowned copy for the s6
+  `prepare` oneshot to walk. A `docker restart` of the same container does not
+  pay it (verified 2026-11-17: zero `chown` processes, healthy in 20s). A
+  **recreate does** — `up --force-recreate`, an image re-pull, any rebuild —
+  even on warm volumes. Earlier drafts said "first boot only" (withdrawn) and
+  then "per start" (also wrong); the restart experiment separated all three
+  cases. This is the single most likely surprise for a returning user and it was
+  documented nowhere.
+- **npm is out of the `--wait` gate, on purpose.** A new npm container runs an
+  s6 `prepare` oneshot (`chown -R` over the certbot site-packages tree, 92,307 KB /
   9,303 files) whose duration is not bounded by anything this project controls.
   Observed still running at 624s, 15+ minutes and 17+ minutes with an unstable
-  `write_bytes` rate; **no completion time is quoted, because none was witnessed
-  end to end**, and **no frequency is claimed either**: it was seen on a fresh
-  volume and again on a container whose persistent volumes already existed, so
-  "first boot only" is withdrawn as unproven. A
+  `write_bytes` rate; one independent bench later witnessed a full run at
+  **>1234s (~20.5 min)** on fresh volumes, `ZFS`-backed overlayfs. **No
+  completion time is quoted as a ceiling** — those are lower bounds, and the
+  storage layer was not separated as a variable. A
   `start_period` is a guess about a duration, and there is no duration here to
   guess, so `360s` was wrong and a larger number would be the same mistake with
-  more digits. `smoke.sh` now brings the stack up detached, then waits on every
+  more digits. `smoke.sh` brings the stack up detached, then waits on every
   service except npm, by name. npm's healthcheck is unchanged and still real, so
   `docker compose ps` shows `starting` for exactly as long as init takes. npm's
   `start_period` drops to 30s because it is no longer load-bearing.
 
 ### Documented
+- **`docker compose up --wait` on a fresh stack still exits 1 on npm, and that
+  is by design, not a fix.** `up --wait` gates on every healthcheck or on none;
+  there is no per-service opt-out a compose file can declare. The exclusion
+  lives in `tests/smoke.sh` and in `install.sh`, both of which start detached
+  and then gate on every service except npm. An earlier commit message and a
+  compose comment described this as fixing `up --wait`; they now say
+  "workaround" and name where the workaround lives. The unsupported verb keeps
+  its honest exit code rather than being papered over.
 - What a too-small `start_period` actually does to npm: it marks the container
   `unhealthy` (FailingStreak 0 -> 4 -> 9 -> 22) and keeps it red for the rest of
   init, **while the container is healthy and recovers with no restart** once
@@ -45,11 +63,12 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
 ### Changed
-- **npm is out of the `--wait` gate, on purpose, as branch (b).** Its first boot
-  runs an s6 `prepare` oneshot (`chown -R` over the certbot site-packages tree,
-  ~92 MB / 9.3k files) whose duration is not bounded by anything the project
-  controls; still running when sampling stopped at **624s**, and at **15+
-  minutes** on a later run. Both are lower bounds, not durations. A
+- **npm is out of the `--wait` gate, on purpose, as branch (b).** A new npm
+  container runs an s6 `prepare` oneshot (`chown -R` over the certbot
+  site-packages tree, ~92 MB / 9.3k files) whose duration is not bounded by
+  anything the project controls; still running when sampling stopped at
+  **624s**, and at **15+ minutes** on a later run. Both are lower bounds, not
+  durations. A
   `start_period` is a guess about a duration, and there is no duration here to
   guess, so `360s` was wrong and `900s` would be the same mistake with a bigger
   number. npm no longer gates the quick start: `smoke.sh` brings the stack up

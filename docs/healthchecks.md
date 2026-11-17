@@ -84,7 +84,8 @@ observations came from a fresh volume; see the frequency section for why that
 distinction turned out not to be load-bearing:
 
 - `chown -R 1000:1000 /opt/certbot/lib/python3.13/site-packages`, run by the
-  image's s6 `prepare` oneshot (frequency not established, see below).
+  image's s6 `prepare` oneshot. **Frequency: once per new container** — see
+  "How often does it run?" below, which is now answered.
 - That tree is **92,307 KB / 9,303 files**.
 - The chown was still running when sampling stopped at **624s**, at **15+
   minutes**, and at **17+ minutes**. `write_bytes` advanced at an unstable rate:
@@ -93,13 +94,21 @@ distinction turned out not to be load-bearing:
 - `:81` refused from inside the container throughout.
 - `FailingStreak` observed climbing through 4, 9, 20, 22, 23, 25.
 
-**There is no witnessed completion time.** Every figure above is a lower bound
-from a run still in progress. An earlier draft of this file quoted a completion
-time of "19m32s (1172s)"; it has been removed because **nobody on this project
-watched that run finish**, and a total with no witness is not a measurement. If a
-future run completes under observation, that number belongs here with the
-command that produced it and the note that it is one sample of an unstable rate,
-not a ceiling.
+**There is still no witnessed completion time on this project's own hardware.**
+Every figure above is a lower bound from a run still in progress. An earlier
+draft of this file quoted a completion time of "19m32s (1172s)"; it has been
+removed because **nobody on this project watched that run finish**, and a total
+with no witness is not a measurement. If a future run completes under
+observation, that number belongs here with the command that produced it and the
+note that it is one sample of an unstable rate, not a ceiling.
+
+**One independent bench has now witnessed a full run** (2026-11-17, round-2
+report from a clean-room host): container started `12:43:09Z`, backend answering
+`13:03:44Z`, chown PID `3111` gone by `13:04:12Z` — **>1234s (~20.5 min)** on
+fresh volumes, one sample, `ZFS`-backed overlayfs. It is recorded as a lower
+bound of the same kind: it does not establish a ceiling, and it does not
+establish that ext4 behaves the same. Anyone with an ext4 host who watches one
+run finish should add the number and the storage layer.
 
 ### What a too-small `start_period` does
 
@@ -115,7 +124,40 @@ reports healthy again once nginx answers, with no restart. So the red flag is a
 defect: not a crash, not a hang, a display that tells a first-time installer their
 install failed when it did not.
 
-### How often does it run? Not established.
+### How often does it run? Once per new container.
+
+The decisive experiment below has now been run on an independent bench
+(2026-11-17): `docker restart` of the same npm container, volumes untouched →
+**zero chown processes**, healthy within 20s. Combined with the round-1
+observation (a *new* container on reused, already-chowned volumes was slow) the
+mechanism is settled, and it is neither of the two stories in this file's earlier
+drafts:
+
+- `/opt/certbot` is **not a declared mount** — only `/data` and
+  `/etc/letsencrypt` are. It lives in the container's **writable layer**. A new
+  container gets a fresh, unchowned copy of that layer, so the oneshot has real
+  work to do every time. A restart of the *same* container keeps its layer, so
+  the oneshot finds the tree already owned and returns in seconds.
+
+So the cost is **per new container**, not per start and not per volume. It is
+paid:
+
+- on the first start of a new container, whatever the volume state;
+- **again on any recreate — `docker compose up --force-recreate`, an image
+  re-pull, a rebuild — even on warm volumes.** That last one is the part a
+  stranger is most likely to hit and least likely to expect: a rebuild is
+  another full init, ~20 minutes on the bench above.
+
+What follows:
+
+- Restarting a container is cheap. **Recreating one is not.**
+- The healthcheck advice is unchanged and now simpler: chown present = init in
+  progress. On a restart you should not see it at all; if you do, that is worth
+  reporting.
+
+The narrative below is kept as the record of how the wrong answer was reached,
+because the way it went wrong — an inference from one observation, promoted to a
+stated fact, then quoted for two rounds — is the reusable lesson.
 
 An earlier draft of this file said **"first boot only,"** resting on a
 `docker compose restart npm` that came back healthy quickly with no chown. That
@@ -130,27 +172,28 @@ it:
   walking a tree a previous run had already walked, and was slow anyway.
 
 If the cost were purely first-touch of the volume, reusing an already-chowned
-volume would be fast. It was not. That points at **per-container-start** cost
-rather than per-volume first touch, i.e. the s6 oneshot runs `chown -R` on every
-start regardless of whether the data is already owned.
+volume would be fast. It was not. That was read at the time as
+**per-container-start** cost — the oneshot running `chown -R` on every start
+regardless of ownership. The observation was sound; the label was not. What is
+re-walked is the container's writable layer, which only a *create* refreshes.
 
-**That is not asserted as fact here.** It is one observation of one container
-with no finished run, and the two explanations have not been separated by an
-experiment. What follows from it is narrower and does not depend on which is
-true:
+A second sample on that same container, taken with a witness:
 
-- The docs must not claim "first boot only." It is not established.
-- A stranger's *second* start may be just as slow as the first. Anyone planning
-  restarts should sample `docker top <container> | grep chown` rather than
-  assume a quick one.
-- The distinguishing experiment, when someone has an idle box: `docker compose
-  restart npm` with the volume untouched, and watch whether chown appears. If it
-  does, the cost is per start. If it never does, something about volume state
-  matters and the original story may hold.
+- `02:59:57Z`, chown PID 15279, `etime 2m52s`, `write_bytes` 60,201,800, `:81`
+  refused
+- `03:00:00Z`, `etime 2m55s`, `write_bytes` 60,638,234, `:81` refused,
+  `health=starting`
 
-Either way branch **(c)** is unaffected: if the walk can happen on any start,
-then no `start_period` can be correct, and the argument is stronger rather than
-weaker.
+So ~436 KB in 3 seconds, from a chown running on a volume that had already been
+walked by a previous run. That was read here as a live rate for the
+non-first-boot case. It is a real observation and the wrong label: the container
+being sampled had been freshly *created* on a reused volume, and the writable
+layer at `/opt/certbot` — not the volume — is what gets re-walked.
+
+That reading — "per start" — was itself **wrong**, and the corrected section
+above supersedes it. The restart experiment separated the three cases. Branch
+**(c)** is unaffected either way: the walk happens on every create, so no
+`start_period` can be correct, and the argument is stronger rather than weaker.
 
 ### What ForgeBox does instead
 

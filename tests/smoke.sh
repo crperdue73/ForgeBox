@@ -364,13 +364,17 @@ if [ "$DO_UP" -eq 1 ]; then
   # Services with no healthcheck (docs/healthchecks.md lists them) count as
   # ready once running — their absence is documented, not accidental.
   #
-  # npm is deliberately not gated here. Its first boot chowns the certbot
-  # site-packages tree inside an s6 prepare oneshot, and that walk ran >624s on
-  # a clean bench with no fixed duration. `up --wait` has no "wait, but not on
-  # this one" — it either gates on every healthcheck or on none — so npm is
-  # started first without --wait and verified after. Without this, a stranger's
-  # very first command prints FAILED about a container that is mid-install and
-  # finishes fine.
+  # npm is deliberately not gated here. A new npm container chowns the certbot
+  # site-packages tree inside an s6 prepare oneshot, and that walk is unbounded
+  # (>624s on a clean bench; >1234s on an independent one). `up --wait` has no
+  # "wait, but not on this one" — it either gates on every healthcheck or on
+  # none — so npm is started first without --wait and verified after. Without
+  # this, a stranger's very first command prints FAILED about a container that
+  # is mid-install and finishes fine.
+  #
+  # This block is the workaround, not a fix: plain `docker compose up --wait`
+  # still exits 1 on npm, and nothing a compose file can declare changes that.
+  # The fix is upstream (the image should signal readiness from its oneshot).
   # Start everything detached, no gate.
   if ! docker compose -f "$COMPOSE_FILE" ${PROFILES+"${PROFILES[@]}"} up --detach; then
     bad "compose up --detach failed"
@@ -404,8 +408,9 @@ if [ "$DO_UP" -eq 1 ]; then
       if [ "$status" != "running" ]; then bad "$name state=$status"
       elif [ "$health" = "unhealthy" ]; then bad "$name unhealthy"
       elif [ "$health" = "starting" ] && [ "$(printf '%s' "$name" | sed -E 's/^.*-npm-[0-9]+$//; s/^npm$//')" = "" ]; then
-        # expected on a first boot, not a defect: unbounded init, see docker-compose.yml
-        ok "$name starting (first-boot init, not gated)"
+        # expected on a new container's init, not a defect: unbounded walk,
+        # see docker-compose.yml
+        ok "$name starting (init in progress, not gated)"
       elif [ "$health" = "starting" ]; then bad "$name still starting after --wait"
       else ok "$name running/$health"; fi
     done

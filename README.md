@@ -43,6 +43,14 @@ docker compose up -d
 
 Then open the ForgeBox dashboard (Heimdall) at `http://<host>:8080`.
 
+> **First start takes a while, and `npm` is the reason.** A new Nginx Proxy
+> Manager container spends **~20 minutes** in init on some hosts before `:81`
+> answers, while `docker compose ps` shows it `starting` or `unhealthy`. That is
+> init, not a failure: it re-walks a 9,303-file tree it ships inside the
+> container, and no clock bounds it reliably. It is paid again on any recreate or
+> rebuild, even on volumes you have had for months. Everything else is up while
+> it works. See [`docs/troubleshooting.md`](docs/troubleshooting.md).
+
 ### Add more of the stack (profiles)
 
 ForgeBox uses **compose profiles** so a small host can run a subset and a big one can run it all.

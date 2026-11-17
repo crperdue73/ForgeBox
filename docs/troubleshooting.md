@@ -133,6 +133,42 @@ Or run ForgeBox inside a **privileged** LXC / a VM / bare metal. `wireguard` (al
 tunnel. Gluetun is not required for the rest of the stack — just don't pass
 `--profile vpn` on a host that lacks the device, and everything else runs fine.
 
+## npm takes ~20 minutes and looks broken
+
+Symptom — on a **new** `npm` container, `docker compose ps` shows `npm` as `starting` (or
+`unhealthy`) for a long time, and `:81` refuses connections. The rest of the stack is up.
+
+**This is init, not a failure.** The image runs an s6 `prepare` oneshot on container
+start: `chown -R` over the certbot site-packages tree (92,307 KB / 9,303 files). It is an
+unbounded filesystem walk — observed at 624s, 15+ minutes, 17+ minutes on this project's
+benches, and >1234s (~20.5 min) in one observed full run on a ZFS-backed host. Faster
+disks finish sooner; there is no number that is correct for every host.
+
+**Which events pay it:**
+
+- first start of any **new** container — yes, whatever the state of the volumes;
+- `docker restart npm` — **no**, seconds, healthy in ~20s;
+- `docker compose up --force-recreate`, an image re-pull, or a rebuild — **yes, again**,
+  even on warm volumes you have run for weeks.
+
+That `/opt/certbot` is not a mounted volume is the whole reason: only `/data` and
+`/etc/letsencrypt` are. It lives in the container's writable layer, so a new container
+gets a fresh copy to walk and a restart of the same container does not.
+
+To tell init from a real defect, ask the namespace:
+
+```bash
+docker top forgebox-npm-1 | grep chown
+```
+
+`chown` present = still initialising, wait. `chown` gone and `:81` still refusing =
+something is actually wrong, open an issue with `docker compose logs npm`.
+
+Do **not** run plain `docker compose up --wait` as your first command. It gates on every
+healthcheck or none, with no per-service opt-out, so it exits 1 on npm and prints
+`unhealthy` about an install that is working. Use `install.sh`, `tests/smoke.sh --up`, or
+`docker compose up -d` then wait on your own. See `docs/healthchecks.md`.
+
 ## Out of disk
 
 The media and files profiles grow without bound.
