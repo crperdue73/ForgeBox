@@ -112,6 +112,35 @@ versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   added to the self-test, including a tcp/udp pair, because the old self-test
   only ever fed it short syntax and therefore could not catch this.
 
+## [1.0.1] — 2026-11-18
+
+### Changed
+- **Nginx Proxy Manager pinned to `2.17.0`, and the `:latest` exemption in
+  `tests/smoke.sh` is now empty.** The front door was tracking `latest` for no
+  reason that survives a second reading: it was unpinned because *2.16.0* was
+  broken, and a broken version is an argument for a pin, not against one. A
+  moving tag also means an image re-pull can recreate the container, and a
+  recreate re-pays the whole unbounded `chown` walk documented in
+  `docs/healthchecks.md`; that surprise sat on the one component every request
+  passes through. `jc21/nginx-proxy-manager:2.17.0` was pulled and inspected on
+  the build box before the pin went in. The exemption list stays in place as the
+  mechanism for a future argued exception; it is empty on purpose, so a new
+  accidental `:latest` fails the suite by name instead of being waved through.
+
+### Fixed
+- **Section 4 no longer prints `(deliberate: , see docker-compose.yml)` on
+  every clean run.** Emptying the exemption exposed a printf that assumed the
+  list was never empty; it now says "every image pinned to an explicit tag".
+
+### Verified
+- `tests/smoke.sh` on the build box (`192.168.111.6`, Compose v5.6.0): core
+  `8/8`, `--profile "*"` `34/34`, self-test OK. Re-injecting
+  `jc21/nginx-proxy-manager:latest` into a fixture makes check 4 fail on it by
+  name, so the gate can still fail.
+- The running `forgebox-npm-1` container on that box is still `2.16.0`; the pin
+  takes effect on the next recreate. Not changed today, because recreating it
+  re-pays the `chown` walk and nothing is waiting on it.
+
 ## [1.0.0] — 2026-11-15
 
 First tagged release. Cut from `main` at commit `2af2f43` (2026-11-02) with no

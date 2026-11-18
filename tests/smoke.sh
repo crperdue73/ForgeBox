@@ -428,12 +428,12 @@ else
 fi
 
 head_ "4. image tags are pinned"
-# `:latest` is a defect by default, but one pin is deliberate and argued for in
-# the compose comments: Nginx Proxy Manager tracks `latest` because 2.16.0 booted
-# with a green :81 healthcheck and never finished admin init. Exemptions are
-# listed here explicitly and reported out loud, so an accidental new `:latest`
-# still fails while a decision this file already explains does not.
-LATEST_ALLOWED="jc21/nginx-proxy-manager:latest"
+# `:latest` is a defect, full stop. There used to be one exemption here: Nginx
+# Proxy Manager tracked `latest` because 2.16.0 booted with a green :81
+# healthcheck and never finished admin init. That was a bad version, not a case
+# for a moving tag, and it is now pinned to 2.17.0 in the compose file. The list
+# stays as the mechanism for a future argued exception; it is empty on purpose.
+LATEST_ALLOWED=""
 # grep exits 1 on no-match, so capture then test the string (not the exit code)
 latest_all="$(grep -oE '^[[:space:]]*image:[[:space:]]*[^[:space:]]+:[^[:space:]]*latest[^[:space:]]*' "$COMPOSE_FILE" | sed -E 's/.*image:[[:space:]]*//' || true)"
 pinned_bad=""
@@ -447,7 +447,11 @@ if [ -n "$pinned_bad" ]; then
   bad "unpinned \`:latest\` images: $pinned_bad"
 else
   ok "no unintended \`:latest\` image tags ($(grep -cE '^[[:space:]]*image:' "$COMPOSE_FILE") images)"
-  [ -n "$latest_all" ] && echo "    (deliberate: $LATEST_ALLOWED, see docker-compose.yml)"
+  if [ -n "$latest_all" ]; then
+    echo "    (deliberate: $LATEST_ALLOWED, see docker-compose.yml)"
+  else
+    echo "    (every image pinned to an explicit tag)"
+  fi
 fi
 
 if [ "$DO_UP" -eq 1 ]; then

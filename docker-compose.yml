@@ -78,7 +78,7 @@ services:
 
   npm:
     <<: *common
-    image: jc21/nginx-proxy-manager:latest
+    image: jc21/nginx-proxy-manager:2.17.0
     ports: ["${FB_PORT_NPM:-80}:80", "${FB_PORT_NPM_TLS:-443}:443", "${FB_PORT_NPM_ADMIN:-81}:81"]
     volumes:
       - npm_data:/data
@@ -135,6 +135,14 @@ services:
     # knows, because the health status cannot distinguish them:
     #   docker top <container> | grep chown
     # chown present = init. chown gone and :81 still refusing = a real defect.
+    #
+    # Pinned to 2.17.0 (2026-11-18). It tracked `latest` only because 2.16.0
+    # booted with a green :81 healthcheck and never finished admin init; that is
+    # one bad version, not a reason to keep a moving tag on the front door. A
+    # moving tag means an image re-pull can recreate this container, and a
+    # recreate re-pays the whole chown walk below. 2.17.0 is the version that
+    # followed 2.16.0 on the registry, and the pin is to a number so a rebuild is
+    # a decision instead of a surprise.
     # That is the question tests/smoke.sh asks, and it is why this healthcheck can
     # stay honest instead of being inflated to a guess: a red status here is the
     # truth about `:81` and says nothing about whether init will finish.
